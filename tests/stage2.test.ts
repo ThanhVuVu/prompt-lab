@@ -77,6 +77,12 @@ describe('Stage 2: project structure', () => {
       expect(res.body.error.code).toBe('INVALID_JSON');
     });
 
+    it('GET /version → 200 with name and version from package.json', async () => {
+      const res = await request(app).get('/version');
+      expect(res.status).toBe(200);
+      expect(res.body).toEqual({ name: 'prompt-lab', version: expect.stringMatching(/^\d+\.\d+\.\d+/) });
+    });
+
     it('unknown route → 404', async () => {
       const res = await request(app).get('/nope');
       expect(res.status).toBe(404);

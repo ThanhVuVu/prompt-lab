@@ -1,6 +1,6 @@
 import { Request, Response } from 'express';
 import { EchoService } from '../services/echoService';
-import { NotImplementedError } from '../utils/errors';
+import { ValidationError } from '../utils/errors';
 
 export class EchoController {
   constructor(private readonly echoService: EchoService) {}
@@ -14,12 +14,15 @@ export class EchoController {
    * Because the router calls it as a plain function: router.post('/', controller.echo).
    * A normal method would lose `this` and `this.echoService` would crash.
    */
-  echo = (_req: Request, _res: Response): void => {
-    // TODO(stage2): Port your Stage 1 /echo handler here, but split responsibilities:
-    //   1. Validate req.body.message. If invalid: throw new ValidationError('...')
-    //      (import it from '../utils/errors') — the error handler turns it into a 400.
-    //   2. Call this.echoService.buildEcho(message).
-    //   3. Respond 200 with the result.
-    throw new NotImplementedError('stage2: EchoController.echo() in src/controllers/echoController.ts');
+  echo = (req: Request, res: Response): void => {
+    const message: unknown = req.body?.message;
+
+    // 1. Validate. Throwing is enough: errorHandler turns it into a 400 response.
+    if (typeof message !== 'string' || message.length === 0) {
+      throw new ValidationError('`message` must be a non-empty string');
+    }
+
+    // 2. Business logic lives in the service. 3. The controller picks the status.
+    res.status(200).json(this.echoService.buildEcho(message));
   };
 }

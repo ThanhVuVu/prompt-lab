@@ -1,5 +1,4 @@
 import { EchoResponse } from '../types';
-import { NotImplementedError } from '../utils/errors';
 
 /**
  * SERVICE layer = business logic. It knows nothing about HTTP:
@@ -15,8 +14,6 @@ export class EchoService {
    *                 date and get a predictable result ("dependency injection")
    */
   buildEcho(message: string, now: Date = new Date()): EchoResponse {
-    // TODO(stage2): Move the response-building logic from stage1/hello-server.ts here.
-    //               Return { received, timestamp } using `now`.
-    throw new NotImplementedError('stage2: EchoService.buildEcho() in src/services/echoService.ts');
+    return { received: message, timestamp: now.toISOString() };
   }
 }

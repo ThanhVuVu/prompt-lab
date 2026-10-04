@@ -21,12 +21,9 @@ const envSchema = z.object({
   // process.env values are ALWAYS strings. z.coerce.number() turns "3000" into 3000.
   PORT: z.coerce.number().int().min(1).max(65535).default(3000),
 
-  // TODO(stage2): This is a bug waiting to happen. LOG_REQUESTS=false in .env
-  // arrives as the STRING "false" — and `if ("false")` is truthy!
-  // Change this so loadEnv() returns a real boolean:
-  //   "true"  → true,  "false" → false,  missing → true
-  // Hint: look up z.stringbool() in the zod docs.
-  LOG_REQUESTS: z.string().default('true'),
+  // Env vars are strings: LOG_REQUESTS=false arrives as "false", and `if ("false")`
+  // is truthy! z.stringbool() maps "true"/"1"/"yes" → true, "false"/"0"/"no" → false.
+  LOG_REQUESTS: z.stringbool().default(true),
 
   // Stage 4+: add DATABASE_URL, JWT_SECRET, ANTHROPIC_API_KEY here as you need them.
 });

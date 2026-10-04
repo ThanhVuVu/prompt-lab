@@ -15,13 +15,14 @@ export function requestLogger(req: Request, res: Response, next: NextFunction): 
     return;
   }
 
-  // TODO(stage2): Record the start time (Date.now()).
-  // TODO(stage2): Listen for the response's 'finish' event:
-  //                 res.on('finish', () => { ... })
-  //               and inside it console.log method, originalUrl, statusCode and
-  //               the duration in ms.
-  // Question to think about: why can't we just log the status code right here,
-  // before calling next()?
+  const start = Date.now();
+
+  // Right now the route hasn't run yet, so the status code is unknown.
+  // 'finish' fires once the response has been fully handed to the network.
+  res.on('finish', () => {
+    const durationMs = Date.now() - start;
+    console.log(`${req.method} ${req.originalUrl} ${res.statusCode} ${durationMs}ms`);
+  });
 
   next();
 }
