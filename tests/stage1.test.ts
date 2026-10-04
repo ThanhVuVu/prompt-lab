@@ -52,6 +52,26 @@ describe('Stage 1: hello-server', () => {
     });
   });
 
+  describe('GET /time', () => {
+    it('defaults to an ISO string', async () => {
+      const res = await request(app).get('/time');
+      expect(res.status).toBe(200);
+      expect(new Date(res.body.now).toISOString()).toBe(res.body.now);
+    });
+
+    it('returns unix seconds with ?format=unix', async () => {
+      const res = await request(app).get('/time?format=unix');
+      expect(res.status).toBe(200);
+      expect(Number.isInteger(res.body.now)).toBe(true);
+      expect(Math.abs(res.body.now - Date.now() / 1000)).toBeLessThan(5);
+    });
+
+    it('returns 400 for an unknown format', async () => {
+      const res = await request(app).get('/time?format=xyz');
+      expect(res.status).toBe(400);
+    });
+  });
+
   describe('unknown routes', () => {
     it('returns 404 JSON', async () => {
       const res = await request(app).get('/does-not-exist');

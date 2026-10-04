@@ -25,12 +25,13 @@ app.use(express.json());
 // This middleware runs for EVERY request before your route handler.
 // `next()` passes control to the next middleware/route. Forget it → the request hangs.
 app.use((req: Request, _res: Response, next: NextFunction) => {
-  // TODO(stage1): Uncomment these lines, send a few curl requests, and read
-  // the output in your terminal. Which values come from the URL? From headers?
-  // console.log('──', req.method, req.url);
-  // console.log('headers:', req.headers);
-  // console.log('query:  ', req.query);
-  // console.log('body:   ', req.body);
+  // Set DEBUG_REQUESTS=1 to print every part of the incoming request.
+  if (process.env.DEBUG_REQUESTS) {
+    console.log('──', req.method, req.url);
+    console.log('headers:', req.headers);
+    console.log('query:  ', req.query);
+    console.log('body:   ', req.body);
+  }
   next();
 });
 
@@ -55,26 +56,41 @@ app.get('/health', (_req: Request, res: Response) => {
 //
 // Why POST and not GET? GET requests should not carry a body, and POST is the
 // conventional method for "here is some data, process it".
-app.post('/echo', (_req: Request, res: Response) => {
-  // TODO(stage1): Read `message` from req.body.
-  // TODO(stage1): If it is not a non-empty string, respond 400 with the error
-  //               shape above and `return` (so you don't send two responses).
-  // TODO(stage1): Respond 200 with { received, timestamp }.
-  //               Hint: new Date().toISOString()
-  res.status(501).json({
-    error: { code: 'NOT_IMPLEMENTED', message: 'TODO(stage1): implement POST /echo in stage1/hello-server.ts' },
-  });
+app.post('/echo', (req: Request, res: Response) => {
+  // req.body is undefined when no JSON body was sent, so use optional chaining.
+  const message: unknown = req.body?.message;
+
+  if (typeof message !== 'string' || message.length === 0) {
+    // `return` matters: without it the code below would try to send a 2nd response.
+    res.status(400).json({
+      error: { code: 'VALIDATION_ERROR', message: '`message` must be a non-empty string' },
+    });
+    return;
+  }
+
+  res.status(200).json({ received: message, timestamp: new Date().toISOString() });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Exercise 1.3 — GET /time?tz=...   (your own design)
+// Exercise 1.3 — GET /time?format=iso|unix
 // ─────────────────────────────────────────────────────────────────────────────
-// TODO(stage1): Add an endpoint that reads a QUERY parameter, e.g.
-//   GET /time            → 200 { "now": "<ISO string>" }
-//   GET /time?format=unix → 200 { "now": 1730000000 }
-//   GET /time?format=xyz → 400 with an error message
-// There is no test for this one — write a curl command that proves it works
-// and add it to http/stage1.http.
+// Query params are always strings (or arrays of strings if repeated: ?format=a&format=b).
+app.get('/time', (req: Request, res: Response) => {
+  const format = req.query.format ?? 'iso';
+  const now = new Date();
+
+  if (format === 'iso') {
+    res.status(200).json({ now: now.toISOString() });
+    return;
+  }
+  if (format === 'unix') {
+    res.status(200).json({ now: Math.floor(now.getTime() / 1000) });
+    return;
+  }
+  res.status(400).json({
+    error: { code: 'VALIDATION_ERROR', message: '`format` must be "iso" or "unix"' },
+  });
+});
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 404 for anything we didn't define (must be registered AFTER all routes)

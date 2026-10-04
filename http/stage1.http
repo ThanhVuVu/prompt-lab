@@ -27,4 +27,12 @@ POST {{base}}/echo
 ### Unknown route (expect 404)
 GET {{base}}/nope
 
-### TODO(stage1): add your GET /time requests here
+
+### GET /time (default ISO)
+GET {{base}}/time
+
+### GET /time as a unix timestamp
+GET {{base}}/time?format=unix
+
+### GET /time with an unknown format (expect 400)
+GET {{base}}/time?format=xyz
