@@ -4,6 +4,8 @@ A backend for AI developers to **version, test and optimise Claude prompts**, wi
 
 This is a **learning project**. You build it stage by stage, going from "what is an HTTP request?" to a deployed, tested production API. The code here is a **skeleton**: infrastructure is provided, and the parts you learn from are marked `TODO(stageN)`.
 
+> **Reference solutions:** the [`solutions`](https://github.com/ThanhVuVu/prompt-lab/tree/solutions) branch has all 10 stages completed, one commit per stage. Try each stage yourself first, then compare.
+
 > **Stack:** Node.js 22 · TypeScript · Express 5 · zod · Jest + Supertest
 > **Later stages:** PostgreSQL + Prisma · JWT · Bull/Redis · Claude API · Fly.io
 
@@ -125,15 +127,15 @@ Until Stage 5 adds real login, "who you are" comes from the `x-user-id` header (
 | 1 | HTTP & web fundamentals | [docs/stage-1-http.md](docs/stage-1-http.md) | ✅ skeleton ready |
 | 2 | Project structure & TypeScript | [docs/stage-2-structure.md](docs/stage-2-structure.md) | ✅ skeleton ready |
 | 3 | REST APIs & validation | [docs/stage-3-rest-validation.md](docs/stage-3-rest-validation.md) | ✅ skeleton ready |
-| 4 | Databases & data modelling (PostgreSQL + Prisma) | added when you reach it | ⏳ |
-| 5 | Authentication & authorization (JWT, ownership, audit log) | | ⏳ |
-| 6 | Async jobs & queues (Bull + Claude API) | | ⏳ |
-| 7 | Observability & logging | | ⏳ |
-| 8 | Testing (test DB, CI) | | ⏳ |
-| 9 | Deployment (Docker + Fly.io) | | ⏳ |
-| 10 | Advanced: A/B tests, caching, semantic search, cost tracking | | ⏳ |
+| 4 | Databases & data modelling (PostgreSQL + Prisma) | on the `solutions` branch | ✅ solution ready |
+| 5 | Authentication & authorization (JWT, ownership, audit log) | on the `solutions` branch | ✅ solution ready |
+| 6 | Async jobs & queues (Bull + Claude API) | on the `solutions` branch | ✅ solution ready |
+| 7 | Observability & logging | on the `solutions` branch | ✅ solution ready |
+| 8 | Testing (test DB, CI) | on the `solutions` branch | ✅ solution ready |
+| 9 | Deployment (Docker + Fly.io) | on the `solutions` branch | ✅ solution ready |
+| 10 | Advanced: A/B tests, caching, semantic search, cost tracking | on the `solutions` branch | ✅ solution ready |
 
-Stages 4–10 are added once you finish Stage 3, so the skeleton can build on **your** code rather than replace it.
+Stages 4–10 are on the `solutions` branch, with a guide for each in its `docs/` folder.
 
 ## Getting help
 
