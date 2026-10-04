@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import { formatZodError } from '../middleware/validation';
 import { listPromptsQuerySchema } from '../schemas/promptSchemas';
+import { JobService } from '../services/jobService';
 import { PromptService } from '../services/promptService';
 import { AuthUser, CreatePromptDTO, Prompt, UpdatePromptDTO } from '../types';
 import { ForbiddenError, NotFoundError, ValidationError } from '../utils/errors';
@@ -16,7 +17,10 @@ import { ForbiddenError, NotFoundError, ValidationError } from '../utils/errors'
  *   delete  owner or admin
  */
 export class PromptController {
-  constructor(private readonly promptService: PromptService) {}
+  constructor(
+    private readonly promptService: PromptService,
+    private readonly jobService: JobService,
+  ) {}
 
   /** GET /api/prompts?page=1&limit=10 → 200 { data, total, page, limit } | 400 */
   list = async (req: Request, res: Response): Promise<void> => {
@@ -43,6 +47,23 @@ export class PromptController {
   listVersions = async (req: Request, res: Response): Promise<void> => {
     const prompt = await this.findVisibleOrThrow(req.params.id as string, req.user!);
     res.status(200).json(await this.promptService.listVersions(prompt.id));
+  };
+
+  /**
+   * POST /api/prompts/:id/analyze → 202 Accepted { jobId, status, statusUrl }
+   * 202 means "accepted for processing, not done yet". Poll statusUrl for the result.
+   */
+  analyze = async (req: Request, res: Response): Promise<void> => {
+    const prompt = await this.findVisibleOrThrow(req.params.id as string, req.user!);
+    const job = await this.jobService.enqueueAnalysis(prompt.id, req.user!);
+    const statusUrl = `/api/jobs/${job.id}`;
+    res.status(202).location(statusUrl).json({ jobId: job.id, status: job.status, statusUrl });
+  };
+
+  /** GET /api/prompts/:id/analyses → 200 [analyses, newest first] | 404 */
+  listAnalyses = async (req: Request, res: Response): Promise<void> => {
+    const prompt = await this.findVisibleOrThrow(req.params.id as string, req.user!);
+    res.status(200).json(await this.jobService.listAnalyses(prompt.id));
   };
 
   /** PATCH /api/prompts/:id → 200 | 400 | 403 | 404 */

@@ -38,7 +38,14 @@ const envSchema = z.object({
   // tests use 4 to stay fast.
   BCRYPT_ROUNDS: z.coerce.number().int().min(4).max(15).default(12),
 
-  // Stage 6+: add REDIS_URL, ANTHROPIC_API_KEY here as you need them.
+  // Stage 6: job queue + Claude API
+  REDIS_URL: z.url({ protocol: /^rediss?$/ }).default('redis://localhost:6379'),
+  // The Anthropic SDK reads ANTHROPIC_API_KEY from the environment itself, so it
+  // isn't parsed here. Model and effort are config, not code, so they can be
+  // changed without a deploy.
+  CLAUDE_MODEL: z.string().default('claude-opus-5-5'),
+  CLAUDE_EFFORT: z.enum(['low', 'medium', 'high', 'xhigh', 'max']).default('low'),
+  WORKER_CONCURRENCY: z.coerce.number().int().min(1).max(50).default(2),
 });
 
 export type Env = z.infer<typeof envSchema>;

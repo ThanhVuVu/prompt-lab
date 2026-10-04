@@ -1,0 +1,32 @@
+# Stage 6 — async jobs. Start three things: `npm run dev`, `npm run worker:dev`, Redis.
+# The worker needs ANTHROPIC_API_KEY in .env (this calls the real Claude API and costs a little).
+@base = http://localhost:3000
+
+# @name login
+POST {{base}}/api/auth/login
+Content-Type: application/json
+
+{ "email": "alice@example.local", "password": "password123" }
+
+@token = {{login.response.body.token}}
+
+# @name prompts
+GET {{base}}/api/prompts
+Authorization: Bearer {{token}}
+
+@promptId = {{prompts.response.body.data[0].id}}
+
+### Queue an analysis → 202 Accepted, returns immediately
+# @name analyze
+POST {{base}}/api/prompts/{{promptId}}/analyze
+Authorization: Bearer {{token}}
+
+@jobId = {{analyze.response.body.jobId}}
+
+### Poll the job: pending → processing → completed
+GET {{base}}/api/jobs/{{jobId}}
+Authorization: Bearer {{token}}
+
+### All analyses of this prompt (with cost and latency)
+GET {{base}}/api/prompts/{{promptId}}/analyses
+Authorization: Bearer {{token}}

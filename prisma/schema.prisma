@@ -32,6 +32,7 @@ model User {
   createdAt    DateTime @default(now()) @map("created_at")
 
   auditLogs AuditLog[]
+  jobs      Job[]
 
   prompts        Prompt[]
   promptVersions PromptVersion[]
@@ -54,6 +55,9 @@ model Prompt {
   // ON DELETE CASCADE: deleting a user deletes their prompts.
   owner    User            @relation(fields: [createdBy], references: [id], onDelete: Cascade)
   versions PromptVersion[]
+
+  analyses PromptAnalysis[]
+  jobs     Job[]
 
   experimentsAsA Experiment[] @relation("PromptA")
   experimentsAsB Experiment[] @relation("PromptB")
@@ -136,4 +140,52 @@ model AuditLog {
   @@index([userId, createdAt])
   @@index([resourceType, resourceId])
   @@map("audit_logs")
+}
+
+/// A unit of background work. The row is the source of truth for status;
+/// the Redis queue only holds "please process job <id>" messages.
+model Job {
+  id          String    @id @default(uuid()) @db.Uuid
+  type        String // 'PROMPT_ANALYSIS'
+  status      String    @default("pending") // pending | processing | completed | failed
+  promptId    String?   @map("prompt_id") @db.Uuid
+  userId      String    @map("user_id")
+  attempts    Int       @default(0)
+  result      Json?
+  error       String?
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+  completedAt DateTime? @map("completed_at")
+
+  prompt   Prompt?         @relation(fields: [promptId], references: [id], onDelete: SetNull)
+  user     User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  analysis PromptAnalysis?
+
+  @@index([userId, createdAt])
+  @@index([promptId])
+  @@map("jobs")
+}
+
+/// Claude's review of one version of a prompt, plus what it cost.
+model PromptAnalysis {
+  id            String   @id @default(uuid()) @db.Uuid
+  promptId      String   @map("prompt_id") @db.Uuid
+  jobId         String   @unique @map("job_id") @db.Uuid // one analysis per job, even if the job is retried
+  promptVersion Int      @map("prompt_version")
+  clarity       Int // 1-10
+  specificity   Int // 1-10
+  summary       String
+  suggestions   String[]
+  model         String
+  inputTokens   Int      @map("input_tokens")
+  outputTokens  Int      @map("output_tokens")
+  costUsd       Decimal  @map("cost_usd") @db.Decimal(10, 6)
+  latencyMs     Int      @map("latency_ms")
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  prompt Prompt @relation(fields: [promptId], references: [id], onDelete: Cascade)
+  job    Job    @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  @@index([promptId, createdAt])
+  @@map("prompt_analyses")
 }

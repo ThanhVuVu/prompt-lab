@@ -11,8 +11,10 @@ import { PrismaClient } from './generated/prisma/client';
 import { errorHandler, notFoundHandler } from './middleware/errorHandler';
 import { requestLogger } from './middleware/logging';
 import { apiRoutes } from './routes';
+import { BullJobQueue, JobQueue } from './queues/analysisQueue';
 import { AuthService } from './services/authService';
 import { EchoService } from './services/echoService';
+import { JobService } from './services/jobService';
 import { PromptService } from './services/promptService';
 import './types/express';
 
@@ -22,19 +24,23 @@ export interface AppServices {
   echoService: EchoService;
   authService: AuthService;
   promptService: PromptService;
+  jobQueue: JobQueue;
+  jobService: JobService;
 }
 
-export function buildServices(db: PrismaClient = prisma): AppServices {
+export function buildServices(db: PrismaClient = prisma, jobQueue: JobQueue = new BullJobQueue()): AppServices {
   return {
     db,
     echoService: new EchoService(),
     authService: new AuthService(db),
     promptService: new PromptService(db),
+    jobQueue,
+    jobService: new JobService(db, jobQueue),
   };
 }
 
 export function createApp(overrides: Partial<AppServices> = {}): Express {
-  const services: AppServices = { ...buildServices(overrides.db), ...overrides };
+  const services: AppServices = { ...buildServices(overrides.db, overrides.jobQueue), ...overrides };
 
   const app = express();
 

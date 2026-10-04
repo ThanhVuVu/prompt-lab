@@ -60,6 +60,13 @@ export class NotFoundError extends AppError {
   }
 }
 
+/** 503 — a dependency (database, queue, …) is down. Clients may retry later. */
+export class ServiceUnavailableError extends AppError {
+  constructor(message = 'Service temporarily unavailable') {
+    super(503, 'SERVICE_UNAVAILABLE', message);
+  }
+}
+
 /**
  * 501 — used by the skeleton for code you haven't written yet.
  * When you see this in a response, the message tells you which file to open.

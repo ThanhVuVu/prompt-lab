@@ -2,7 +2,7 @@
   "name": "prompt-lab",
   "version": "0.1.0",
   "private": true,
-  "description": "Prompt Laboratory — version, test, and optimize Claude prompts. A backend learning project.",
+  "description": "Prompt Laboratory \u2014 version, test, and optimize Claude prompts. A backend learning project.",
   "main": "dist/index.js",
   "engines": {
     "node": ">=20"
@@ -31,17 +31,23 @@
     "test:stage7": "jest tests/stage7",
     "test:stage8": "jest tests/stage8",
     "test:stage9": "jest tests/stage9",
-    "test:stage10": "jest tests/stage10"
+    "test:stage10": "jest tests/stage10",
+    "worker": "node dist/worker.js",
+    "worker:dev": "tsx watch src/worker.ts"
   },
   "license": "MIT",
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.131.0",
     "@prisma/adapter-pg": "^7.10.0",
     "@prisma/client": "^7.10.0",
     "bcryptjs": "^3.0.3",
+    "bullmq": "^6.3.11",
     "dotenv": "^17.4.2",
     "express": "^5.2.1",
+    "ioredis": "^6.0.0",
     "jsonwebtoken": "^9.0.3",
     "pg": "^8.23.1",
+    "winston": "^3.19.0",
     "zod": "^4.6.5"
   },
   "devDependencies": {

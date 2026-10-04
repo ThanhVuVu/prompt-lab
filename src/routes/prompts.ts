@@ -4,6 +4,7 @@ import { requireAuth, requireRole } from '../middleware/auth';
 import { validateBody } from '../middleware/validation';
 import { createPromptSchema, updatePromptSchema } from '../schemas/promptSchemas';
 import { AuthService } from '../services/authService';
+import { JobService } from '../services/jobService';
 import { PromptService } from '../services/promptService';
 
 /**
@@ -12,9 +13,9 @@ import { PromptService } from '../services/promptService';
  * Middleware order per route: authenticate → authorize (role) → validate → handle.
  * Authenticating first means anonymous clients learn nothing, not even validation rules.
  */
-export function promptRoutes(promptService: PromptService, authService: AuthService): Router {
+export function promptRoutes(promptService: PromptService, authService: AuthService, jobService: JobService): Router {
   const router = Router();
-  const controller = new PromptController(promptService);
+  const controller = new PromptController(promptService, jobService);
   const canWrite = requireRole('user', 'admin');
 
   router.use(requireAuth(authService));
@@ -23,6 +24,8 @@ export function promptRoutes(promptService: PromptService, authService: AuthServ
   router.post('/', canWrite, validateBody(createPromptSchema), controller.create);
   router.get('/:id', controller.getById);
   router.get('/:id/versions', controller.listVersions);
+  router.get('/:id/analyses', controller.listAnalyses);
+  router.post('/:id/analyze', canWrite, controller.analyze);
   router.patch('/:id', canWrite, validateBody(updatePromptSchema), controller.update);
   router.delete('/:id', canWrite, controller.delete);
 
