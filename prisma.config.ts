@@ -3,7 +3,7 @@
  * The app itself connects in src/config/database.ts.
  */
 import 'dotenv/config';
-import { defineConfig, env } from 'prisma/config';
+import { defineConfig } from 'prisma/config';
 
 export default defineConfig({
   schema: 'prisma/schema.prisma',
@@ -12,6 +12,9 @@ export default defineConfig({
     seed: 'tsx prisma/seed.ts',
   },
   datasource: {
-    url: env('DATABASE_URL'),
+    // process.env (not Prisma's env() helper, which throws when unset) so that
+    // `prisma generate` — run by `npm install` — works before .env exists.
+    // Commands that need the database (migrate, studio) still fail clearly without it.
+    url: process.env.DATABASE_URL,
   },
 });

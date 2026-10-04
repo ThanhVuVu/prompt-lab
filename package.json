@@ -2,7 +2,7 @@
   "name": "prompt-lab",
   "version": "0.1.0",
   "private": true,
-  "description": "Prompt Laboratory — version, test, and optimize Claude prompts. A backend learning project.",
+  "description": "Prompt Laboratory \u2014 version, test, and optimize Claude prompts. A backend learning project.",
   "main": "dist/index.js",
   "engines": {
     "node": ">=20"
@@ -33,7 +33,10 @@
     "test:stage9": "jest tests/stage9",
     "test:stage10": "jest tests/stage10",
     "worker": "node dist/worker.js",
-    "worker:dev": "tsx watch src/worker.ts"
+    "worker:dev": "tsx watch src/worker.ts",
+    "lint": "eslint .",
+    "test:coverage": "jest --coverage",
+    "ci": "npm run lint && npm run typecheck && npm run test:coverage && npm run build"
   },
   "license": "MIT",
   "dependencies": {
@@ -52,17 +55,21 @@
     "zod": "^4.6.5"
   },
   "devDependencies": {
+    "@eslint/js": "^10.0.1",
     "@types/express": "^5.0.6",
     "@types/jest": "^30.0.0",
     "@types/jsonwebtoken": "^9.0.10",
     "@types/node": "^22.20.5",
     "@types/pg": "^8.23.1",
     "@types/supertest": "^7.2.1",
+    "eslint": "^10.12.0",
+    "globals": "^17.13.0",
     "jest": "^30.5.2",
     "prisma": "^7.10.0",
     "supertest": "^7.3.1",
     "ts-jest": "^29.4.14",
     "tsx": "^4.23.15",
-    "typescript": "~5.9.3"
+    "typescript": "~5.9.3",
+    "typescript-eslint": "^8.71.0"
   }
 }

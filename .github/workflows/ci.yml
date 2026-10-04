@@ -1,0 +1,76 @@
+# Continuous Integration: on every push and pull request, prove the code
+# lints, type-checks, passes every test against real Postgres + Redis, and builds.
+# A red CI blocks merging, which is the whole point.
+name: CI
+
+on:
+  push:
+    branches: [main, solutions]
+  pull_request:
+
+# Cancel an older run of the same branch when a new commit arrives.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    # Throwaway databases, started fresh for every run.
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: prompt_lab_test
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports: ['6379:6379']
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+
+    env:
+      # Not secrets: CI-only values for throwaway services.
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/prompt_lab_test
+      TEST_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/prompt_lab_test
+      REDIS_URL: redis://localhost:6379
+      JWT_SECRET: ci-only-secret-ci-only-secret-ci-only-secret
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Install dependencies (also generates the Prisma client)
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Type-check
+        run: npm run typecheck
+
+      - name: Test with coverage (migrations are applied by tests/globalSetup.ts)
+        run: npm run test:coverage
+
+      - name: Build
+        run: npm run build
+
+      - name: Upload coverage report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage
+          path: coverage/lcov-report
+          retention-days: 7

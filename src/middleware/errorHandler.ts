@@ -29,9 +29,10 @@ export function errorHandler(err: unknown, req: Request, res: Response<ApiErrorB
     return;
   }
 
-  // express.json() throws this when the body is not valid JSON, e.g. '{"title": '.
-  if (isBodyParseError(err)) {
-    res.status(400).json({ error: { code: 'INVALID_JSON', message: 'Request body is not valid JSON' } });
+  // express.json() throws these before any route runs.
+  const bodyError = bodyParserError(err);
+  if (bodyError) {
+    res.status(bodyError.status).json({ error: { code: bodyError.code, message: bodyError.message } });
     return;
   }
 
@@ -53,6 +54,15 @@ export function errorHandler(err: unknown, req: Request, res: Response<ApiErrorB
   });
 }
 
-function isBodyParseError(err: unknown): boolean {
-  return typeof err === 'object' && err !== null && (err as { type?: string }).type === 'entity.parse.failed';
+const BODY_PARSER_ERRORS: Record<string, { status: number; code: string; message: string }> = {
+  // '{"title": ' — not valid JSON
+  'entity.parse.failed': { status: 400, code: 'INVALID_JSON', message: 'Request body is not valid JSON' },
+  // larger than express.json({ limit }) — found by a Stage 8 regression test (it used to be a 500)
+  'entity.too.large': { status: 413, code: 'PAYLOAD_TOO_LARGE', message: 'Request body is too large' },
+  'encoding.unsupported': { status: 415, code: 'UNSUPPORTED_ENCODING', message: 'Unsupported content encoding' },
+};
+
+function bodyParserError(err: unknown) {
+  const type = typeof err === 'object' && err !== null ? (err as { type?: string }).type : undefined;
+  return type ? BODY_PARSER_ERRORS[type] : undefined;
 }
