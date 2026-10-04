@@ -56,6 +56,27 @@ const envSchema = z.object({
   WORKER_CONCURRENCY: z.coerce.number().int().min(1).max(50).default(2),
   // The worker serves its own /metrics (it's a separate process) on this port.
   WORKER_METRICS_PORT: z.coerce.number().int().min(1).max(65535).default(9100),
+
+  // Stage 9: production hardening
+  // Failed + successful login attempts allowed per IP+email per 15 minutes.
+  LOGIN_RATE_LIMIT: z.coerce.number().int().min(1).default(10),
+  // How many reverse proxies sit in front of us (Fly.io's edge = 1). Needed so
+  // req.ip is the client's IP, not the proxy's. 0 = trust none (local dev).
+  TRUST_PROXY_HOPS: z.coerce.number().int().min(0).max(5).default(0),
+});
+
+/**
+ * Extra rules for production: refuse to start with development defaults.
+ * A forgotten dev JWT_SECRET in production means anyone can forge tokens.
+ */
+const productionSchema = envSchema.superRefine((e, ctx) => {
+  if (e.NODE_ENV !== 'production') return;
+  if (/dev-only|change-me|test-secret/i.test(e.JWT_SECRET)) {
+    ctx.addIssue({ code: 'custom', path: ['JWT_SECRET'], message: 'uses a development value in production' });
+  }
+  if (/localhost|127\.0\.0\.1/.test(e.DATABASE_URL)) {
+    ctx.addIssue({ code: 'custom', path: ['DATABASE_URL'], message: 'points at localhost in production' });
+  }
 });
 
 export type Env = z.infer<typeof envSchema>;
@@ -66,7 +87,7 @@ export type Env = z.infer<typeof envSchema>;
  * tests can pass in fake values.
  */
 export function loadEnv(source: Record<string, string | undefined> = process.env): Env {
-  const result = envSchema.safeParse(source);
+  const result = productionSchema.safeParse(source);
   if (!result.success) {
     const problems = result.error.issues.map((i) => `  - ${i.path.join('.')}: ${i.message}`).join('\n');
     throw new Error(`Invalid environment variables:\n${problems}`);

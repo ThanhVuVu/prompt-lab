@@ -7,10 +7,12 @@
  */
 import express, { Express } from 'express';
 import { prisma } from './config/database';
+import { env } from './config/env';
 import { PrismaClient } from './generated/prisma/client';
 import { errorHandler, notFoundHandler } from './middleware/errorHandler';
 import { requestLogger } from './middleware/logging';
 import { requestId } from './middleware/requestId';
+import { securityHeaders } from './middleware/security';
 import { apiRoutes } from './routes';
 import { BullJobQueue, JobQueue } from './queues/analysisQueue';
 import { AuthService } from './services/authService';
@@ -45,13 +47,20 @@ export function createApp(overrides: Partial<AppServices> = {}): Express {
 
   const app = express();
 
+  // Behind a proxy (Fly.io's edge), the TCP peer is the proxy. Trusting N hops
+  // makes req.ip the real client IP (from X-Forwarded-For), which the login
+  // rate limiter and the logs rely on. Never trust more hops than you have,
+  // or clients can spoof their IP with a fake X-Forwarded-For header.
+  app.set('trust proxy', env.TRUST_PROXY_HOPS);
+
   // ORDER MATTERS: middleware runs top to bottom for every request.
   app.use(requestId); //                         1. tag the request (first, so everything can log it)
   app.use(requestLogger); //                     2. log + time every request
-  app.use(express.json({ limit: '100kb' })); // 3. parse JSON bodies (and cap their size)
-  app.use(apiRoutes(services)); //               4. the actual endpoints (each route authenticates itself)
-  app.use(notFoundHandler); //                   5. nothing matched → 404
-  app.use(errorHandler); //                      6. something threw → error response
+  app.use(securityHeaders); //                   3. security headers on every response
+  app.use(express.json({ limit: '100kb' })); // 4. parse JSON bodies (and cap their size)
+  app.use(apiRoutes(services)); //               5. the actual endpoints (each route authenticates itself)
+  app.use(notFoundHandler); //                   6. nothing matched → 404
+  app.use(errorHandler); //                      7. something threw → error response
 
   return app;
 }

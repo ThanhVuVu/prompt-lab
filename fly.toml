@@ -1,0 +1,59 @@
+# Fly.io configuration. See docs/stage-9-deployment.md for the full runbook.
+#   fly launch --no-deploy --copy-config   (first time: creates the app)
+#   fly deploy                             (every release)
+#
+# SECRETS DO NOT GO IN THIS FILE: it is committed to git. Set them with
+#   fly secrets set DATABASE_URL=… JWT_SECRET=… REDIS_URL=… ANTHROPIC_API_KEY=…
+
+app = 'prompt-lab-thanhvuvu'      # must be globally unique on Fly.io: change it
+primary_region = 'sin'            # Singapore: closest region to Vietnam
+
+[build]
+  dockerfile = 'Dockerfile'
+
+[deploy]
+  # Runs once per deploy, in a temporary machine, BEFORE new app versions start.
+  # If a migration fails, the deploy stops and the old version keeps serving.
+  release_command = 'npx prisma migrate deploy'
+  strategy = 'rolling'            # replace machines one at a time: no downtime
+
+[env]
+  # Non-secret configuration only.
+  NODE_ENV = 'production'
+  PORT = '3000'
+  LOG_FORMAT = 'json'
+  LOG_LEVEL = 'info'
+  TRUST_PROXY_HOPS = '1'          # Fly's edge proxy
+  CLAUDE_MODEL = 'claude-opus-5-5'
+  CLAUDE_EFFORT = 'low'
+
+# Two process groups from the same image.
+[processes]
+  app = 'node dist/index.js'
+  worker = 'node dist/worker.js'
+
+[http_service]
+  processes = ['app']             # only the API receives HTTP traffic
+  internal_port = 3000
+  force_https = true
+  auto_stop_machines = 'stop'     # scale to zero when idle (cheap for a learning project)
+  auto_start_machines = true
+  min_machines_running = 0
+
+  [http_service.concurrency]
+    type = 'requests'
+    soft_limit = 200
+    hard_limit = 250
+
+  # Readiness: Fly only routes traffic to machines whose DB + Redis checks pass.
+  [[http_service.checks]]
+    method = 'GET'
+    path = '/health/ready'
+    interval = '15s'
+    timeout = '5s'
+    grace_period = '20s'
+
+[[vm]]
+  memory = '512mb'
+  cpu_kind = 'shared'
+  cpus = 1

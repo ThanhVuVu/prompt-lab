@@ -1,0 +1,16 @@
+# Keep the build context small and secrets out of the image.
+node_modules
+dist
+coverage
+logs
+src/generated
+.git
+.github
+.env
+.env.*
+!.env.example
+*.log
+tests
+docs
+http
+stage1
