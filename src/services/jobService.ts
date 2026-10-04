@@ -4,6 +4,7 @@ import { JobQueue } from '../queues/analysisQueue';
 import { AuthUser } from '../types';
 import { NotFoundError, ServiceUnavailableError } from '../utils/errors';
 import { writeAudit } from './auditService';
+import { CostService } from './costService';
 
 export type JobStatus = 'pending' | 'processing' | 'completed' | 'failed';
 
@@ -11,6 +12,7 @@ export class JobService {
   constructor(
     private readonly db: PrismaClient,
     private readonly queue: JobQueue,
+    private readonly costs: CostService,
   ) {}
 
   /**
@@ -22,6 +24,9 @@ export class JobService {
    * forever. (The robust fix is the transactional-outbox pattern; see the docs.)
    */
   async enqueueAnalysis(promptId: string, user: AuthUser) {
+    // Stage 10: refuse paid work once this month's budget is used up (402).
+    await this.costs.assertWithinBudget(user.id);
+
     const job = await this.db.$transaction(async (tx) => {
       const created = await tx.job.create({
         data: { type: 'PROMPT_ANALYSIS', status: 'pending', promptId, userId: user.id },

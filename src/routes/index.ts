@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { AppServices } from '../app';
 import { authRoutes } from './auth';
 import { echoRoutes } from './echo';
+import { experimentRoutes, usageRoutes } from './experiments';
 import { healthRoutes } from './health';
 import { jobRoutes } from './jobs';
 import { metricsRoutes } from './metrics';
@@ -22,6 +23,8 @@ export function apiRoutes(services: AppServices): Router {
   router.use('/api/audit-logs', auditRoutes(services.authService, services.db));
   router.use('/api/prompts', promptRoutes(services.promptService, services.authService, services.jobService));
   router.use('/api/jobs', jobRoutes(services.jobService, services.authService));
+  router.use('/api/experiments', experimentRoutes(services.experimentService, services.authService));
+  router.use('/api/usage', usageRoutes(services.costService, services.authService));
 
   return router;
 }

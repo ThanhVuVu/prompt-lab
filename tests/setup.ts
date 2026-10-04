@@ -10,3 +10,5 @@ process.env.DATABASE_URL = TEST_DATABASE_URL;
 process.env.JWT_SECRET = 'test-secret-that-is-at-least-32-characters-long';
 // Cheap hashing keeps the suite fast. Never use 4 in production.
 process.env.BCRYPT_ROUNDS = '4';
+// Per-process cache in tests: no Redis connection to clean up, and each app instance starts empty.
+process.env.CACHE_DRIVER = 'memory';

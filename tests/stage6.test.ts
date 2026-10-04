@@ -13,7 +13,8 @@ import { prisma } from '../src/config/database';
 import { calculateCostUsd } from '../src/config/pricing';
 import { ANALYSIS_QUEUE, AnalysisJobData, BullJobQueue, createRedisConnection } from '../src/queues/analysisQueue';
 import { ClaudeRefusalError, ClaudeService } from '../src/services/claudeService';
-import { isRetryable, processAnalysisJob } from '../src/workers/analysisWorker';
+// Stage 10 moved the shared job lifecycle into jobRunner.ts.
+import { isRetryable, processJob as processAnalysisJob } from '../src/workers/jobRunner';
 import { createUser, TestUser } from './helpers/auth';
 import { resetDatabase } from './helpers/db';
 import { FakeAnalyzer, fakeResult, InMemoryJobQueue } from './helpers/fakes';

@@ -30,6 +30,13 @@ export const jobsProcessed = new client.Counter({
   registers: [registry],
 });
 
+export const cacheRequests = new client.Counter({
+  name: 'cache_requests_total',
+  help: 'Cache lookups by result: the hit rate is hit / (hit + miss)',
+  labelNames: ['result'] as const,
+  registers: [registry],
+});
+
 export const claudeCostUsd = new client.Counter({
   name: 'claude_cost_usd_total',
   help: 'Total Claude API spend in USD',

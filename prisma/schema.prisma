@@ -31,8 +31,13 @@ model User {
   tokenVersion Int      @default(0) @map("token_version")
   createdAt    DateTime @default(now()) @map("created_at")
 
+  // Stage 10: per-user monthly spending cap on Claude calls. NULL = use the
+  // DEFAULT_MONTHLY_BUDGET_USD setting.
+  monthlyBudgetUsd Decimal? @map("monthly_budget_usd") @db.Decimal(10, 2)
+
   auditLogs AuditLog[]
   jobs      Job[]
+  costLogs  CostLog[]
 
   prompts        Prompt[]
   promptVersions PromptVersion[]
@@ -87,39 +92,91 @@ model PromptVersion {
   @@map("prompt_versions")
 }
 
-/// A/B test: run two prompts on the same inputs and compare (built in Stage 10).
+/// A/B test: run two prompts on the same inputs, then let a judge model pick
+/// the better output for each input.
 model Experiment {
-  id        String   @id @default(uuid()) @db.Uuid
-  promptAId String   @map("prompt_a_id") @db.Uuid
-  promptBId String   @map("prompt_b_id") @db.Uuid
-  status    String   @default("running") // 'running' | 'completed'
-  createdBy String   @map("created_by")
-  createdAt DateTime @default(now()) @map("created_at")
+  id             String    @id @default(uuid()) @db.Uuid
+  name           String    @db.VarChar(100)
+  promptAId      String    @map("prompt_a_id") @db.Uuid
+  promptBId      String    @map("prompt_b_id") @db.Uuid
+  // Content snapshots: editing a prompt later must not change a finished experiment.
+  promptAContent String    @map("prompt_a_content")
+  promptBContent String    @map("prompt_b_content")
+  // Array of { "variable": "value" } objects, one per test case.
+  inputs         Json
+  status         String    @default("pending") // pending | running | completed | failed
+  createdBy      String    @map("created_by")
+  createdAt      DateTime  @default(now()) @map("created_at")
+  completedAt    DateTime? @map("completed_at")
 
-  promptA Prompt             @relation("PromptA", fields: [promptAId], references: [id])
-  promptB Prompt             @relation("PromptB", fields: [promptBId], references: [id])
-  owner   User               @relation(fields: [createdBy], references: [id])
-  results ExperimentResult[]
+  promptA   Prompt               @relation("PromptA", fields: [promptAId], references: [id], onDelete: Cascade)
+  promptB   Prompt               @relation("PromptB", fields: [promptBId], references: [id], onDelete: Cascade)
+  owner     User                 @relation(fields: [createdBy], references: [id], onDelete: Cascade)
+  results   ExperimentResult[]
+  judgments ExperimentJudgment[]
+  jobs      Job[]
 
-  @@index([createdBy])
+  @@index([createdBy, createdAt])
   @@map("experiments")
 }
 
+/// One model output: (input #i, variant A or B).
 model ExperimentResult {
   id            String   @id @default(uuid()) @db.Uuid
   experimentId  String   @map("experiment_id") @db.Uuid
+  inputIndex    Int      @map("input_index")
   promptVersion String   @map("prompt_version") @db.Char(1) // 'A' | 'B'
-  input         String
+  input         String // the rendered prompt that was sent
   output        String
+  model         String
+  inputTokens   Int      @map("input_tokens")
+  outputTokens  Int      @map("output_tokens")
   // Money is DECIMAL, never float: 0.1 + 0.2 !== 0.3 in floating point.
-  costUsd       Decimal? @map("cost_usd") @db.Decimal(10, 6)
-  latencyMs     Int?     @map("latency_ms")
+  costUsd       Decimal  @map("cost_usd") @db.Decimal(10, 6)
+  latencyMs     Int      @map("latency_ms")
   createdAt     DateTime @default(now()) @map("created_at")
 
   experiment Experiment @relation(fields: [experimentId], references: [id], onDelete: Cascade)
 
-  @@index([experimentId])
+  // Makes the worker resumable and idempotent: each cell is computed once.
+  @@unique([experimentId, inputIndex, promptVersion])
   @@map("experiment_results")
+}
+
+/// The judge's verdict for one input: which variant's output was better.
+model ExperimentJudgment {
+  id           String   @id @default(uuid()) @db.Uuid
+  experimentId String   @map("experiment_id") @db.Uuid
+  inputIndex   Int      @map("input_index")
+  winner       String   @db.VarChar(3) // 'A' | 'B' | 'tie'
+  reasoning    String
+  // We randomise which output the judge sees first (position bias); stored for auditing.
+  aShownFirst  Boolean  @map("a_shown_first")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  experiment Experiment @relation(fields: [experimentId], references: [id], onDelete: Cascade)
+
+  @@unique([experimentId, inputIndex])
+  @@map("experiment_judgments")
+}
+
+/// One row per Claude API call: the ledger behind spending reports and budgets.
+model CostLog {
+  id           String   @id @default(uuid()) @db.Uuid
+  userId       String   @map("user_id")
+  operation    String // 'PROMPT_ANALYSIS' | 'EXPERIMENT_RUN' | 'EXPERIMENT_JUDGE'
+  model        String
+  inputTokens  Int      @map("input_tokens")
+  outputTokens Int      @map("output_tokens")
+  costUsd      Decimal  @map("cost_usd") @db.Decimal(10, 6)
+  resourceId   String?  @map("resource_id")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // "How much has this user spent this month?" runs before every paid job.
+  @@index([userId, createdAt])
+  @@map("cost_logs")
 }
 
 /// Append-only record of who did what, when. Required for compliance (SOC 2, GDPR)
@@ -145,24 +202,27 @@ model AuditLog {
 /// A unit of background work. The row is the source of truth for status;
 /// the Redis queue only holds "please process job <id>" messages.
 model Job {
-  id          String    @id @default(uuid()) @db.Uuid
-  type        String // 'PROMPT_ANALYSIS'
-  status      String    @default("pending") // pending | processing | completed | failed
-  promptId    String?   @map("prompt_id") @db.Uuid
-  userId      String    @map("user_id")
-  attempts    Int       @default(0)
-  result      Json?
-  error       String?
-  createdAt   DateTime  @default(now()) @map("created_at")
-  updatedAt   DateTime  @updatedAt @map("updated_at")
-  completedAt DateTime? @map("completed_at")
+  id           String    @id @default(uuid()) @db.Uuid
+  type         String // 'PROMPT_ANALYSIS'
+  status       String    @default("pending") // pending | processing | completed | failed
+  promptId     String?   @map("prompt_id") @db.Uuid
+  experimentId String?   @map("experiment_id") @db.Uuid
+  userId       String    @map("user_id")
+  attempts     Int       @default(0)
+  result       Json?
+  error        String?
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+  completedAt  DateTime? @map("completed_at")
 
-  prompt   Prompt?         @relation(fields: [promptId], references: [id], onDelete: SetNull)
-  user     User            @relation(fields: [userId], references: [id], onDelete: Cascade)
-  analysis PromptAnalysis?
+  prompt     Prompt?         @relation(fields: [promptId], references: [id], onDelete: SetNull)
+  experiment Experiment?     @relation(fields: [experimentId], references: [id], onDelete: Cascade)
+  user       User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  analysis   PromptAnalysis?
 
   @@index([userId, createdAt])
   @@index([promptId])
+  @@index([experimentId])
   @@map("jobs")
 }
 

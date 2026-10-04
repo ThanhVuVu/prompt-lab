@@ -114,7 +114,10 @@ export class AuthService {
         action: 'USER_UPDATED',
         resourceType: 'user',
         resourceId: id,
-        details: { before: { name: existing.name, role: existing.role }, after: input },
+        details: {
+          before: { name: existing.name, role: existing.role, monthlyBudgetUsd: existing.monthlyBudgetUsd?.toString() ?? null },
+          after: input,
+        },
       });
       return updated;
     });
@@ -133,7 +136,14 @@ export class AuthService {
 
 /** Whitelist the fields we expose. Spreading the row would leak passwordHash. */
 export function toPublicUser(user: UserRow): PublicUser {
-  return { id: user.id, email: user.email, name: user.name, role: user.role as Role, createdAt: user.createdAt };
+  return {
+    id: user.id,
+    email: user.email,
+    name: user.name,
+    role: user.role as Role,
+    monthlyBudgetUsd: user.monthlyBudgetUsd === null ? null : Number(user.monthlyBudgetUsd),
+    createdAt: user.createdAt,
+  };
 }
 
 // A valid bcrypt hash of a random string, used to keep login timing constant.

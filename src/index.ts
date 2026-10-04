@@ -24,6 +24,7 @@ for (const signal of ['SIGINT', 'SIGTERM'] as const) {
     logger.info('shutting down', { signal });
     server.close(async () => {
       await services.jobQueue.close();
+      await services.cache.close();
       await services.db.$disconnect();
       process.exit(0);
     });

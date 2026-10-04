@@ -1,5 +1,13 @@
 import { JobQueue } from '../../src/queues/analysisQueue';
-import { AnalysisResult, PromptAnalyzer } from '../../src/services/claudeService';
+import {
+  AnalysisResult,
+  CallUsage,
+  ExperimentLLM,
+  GenerationResult,
+  JudgeInput,
+  Judgment,
+  PromptAnalyzer,
+} from '../../src/services/claudeService';
 
 /** Records enqueued job ids instead of talking to Redis. */
 export class InMemoryJobQueue implements JobQueue {
@@ -41,5 +49,37 @@ export class FakeAnalyzer implements PromptAnalyzer {
   async analyze(promptContent: string): Promise<AnalysisResult> {
     this.calls.push(promptContent);
     return this.behaviour();
+  }
+}
+
+const fakeUsage: CallUsage = { model: 'claude-opus-5-5', inputTokens: 100, outputTokens: 50, costUsd: 0.0014, latencyMs: 200 };
+
+/**
+ * Deterministic stand-in for Claude in experiments:
+ *  - generate() echoes the prompt it was given
+ *  - judge() prefers whichever side was produced by a prompt containing `preferMarker`
+ */
+export class FakeLLM implements ExperimentLLM {
+  generateCalls: string[] = [];
+  judgeCalls: JudgeInput[] = [];
+  failGenerateOnCall?: number; // 1-based; throws a transient error once
+
+  constructor(private readonly preferMarker = 'CONCISE') {}
+
+  async generate(renderedPrompt: string): Promise<GenerationResult> {
+    this.generateCalls.push(renderedPrompt);
+    if (this.failGenerateOnCall === this.generateCalls.length) {
+      this.failGenerateOnCall = undefined;
+      throw new Error('529 overloaded');
+    }
+    return { output: `answer to: ${renderedPrompt}`, ...fakeUsage };
+  }
+
+  async judge(input: JudgeInput): Promise<Judgment & CallUsage> {
+    this.judgeCalls.push(input);
+    const firstPreferred = input.first.prompt.includes(this.preferMarker);
+    const secondPreferred = input.second.prompt.includes(this.preferMarker);
+    const winner = firstPreferred === secondPreferred ? 'tie' : firstPreferred ? 'first' : 'second';
+    return { winner, reasoning: 'fake verdict', ...fakeUsage };
   }
 }

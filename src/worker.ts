@@ -13,16 +13,16 @@ import { registry } from './config/metrics';
 import { ANALYSIS_QUEUE, AnalysisJobData, createRedisConnection } from './queues/analysisQueue';
 import { ClaudeService } from './services/claudeService';
 import { requestContext } from './utils/requestContext';
-import { processAnalysisJob } from './workers/analysisWorker';
+import { processJob } from './workers/jobRunner';
 
-const analyzer = new ClaudeService();
+const claude = new ClaudeService();
 
 const worker = new Worker<AnalysisJobData>(
   ANALYSIS_QUEUE,
   // Run each job inside a context so every log line it writes carries the job id.
   (job) =>
     requestContext.run({ requestId: `job:${job.data.jobId}` }, () =>
-      processAnalysisJob(job.data.jobId, { db: prisma, analyzer }, {
+      processJob(job.data.jobId, { db: prisma, analyzer: claude, llm: claude }, {
         attempt: job.attemptsMade + 1,
         maxAttempts: job.opts.attempts ?? 1,
       }),

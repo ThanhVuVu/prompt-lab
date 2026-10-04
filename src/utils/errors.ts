@@ -60,6 +60,16 @@ export class NotFoundError extends AppError {
   }
 }
 
+/**
+ * 402 — the action would spend money the user no longer has budget for.
+ * (402 "Payment Required" fits: retrying won't help until the budget changes.)
+ */
+export class BudgetExceededError extends AppError {
+  constructor(message: string) {
+    super(402, 'BUDGET_EXCEEDED', message);
+  }
+}
+
 /** 503 — a dependency (database, queue, …) is down. Clients may retry later. */
 export class ServiceUnavailableError extends AppError {
   constructor(message = 'Service temporarily unavailable') {

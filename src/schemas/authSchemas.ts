@@ -21,6 +21,8 @@ export const updateUserSchema = z
   .object({
     name: z.string().trim().min(1).max(100),
     role: z.enum(ROLES),
+    // Stage 10: per-user monthly Claude budget in USD; null = use the default.
+    monthlyBudgetUsd: z.number().min(0).max(100_000).nullable(),
   })
   .partial()
   .refine((data) => Object.keys(data).length > 0, { message: 'Provide at least one field to update' });

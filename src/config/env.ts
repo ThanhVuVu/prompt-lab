@@ -63,6 +63,15 @@ const envSchema = z.object({
   // How many reverse proxies sit in front of us (Fly.io's edge = 1). Needed so
   // req.ip is the client's IP, not the proxy's. 0 = trust none (local dev).
   TRUST_PROXY_HOPS: z.coerce.number().int().min(0).max(5).default(0),
+
+  // Stage 10: cost tracking + caching
+  // Monthly Claude spend allowed per user unless an admin sets their own budget.
+  DEFAULT_MONTHLY_BUDGET_USD: z.coerce.number().min(0).default(10),
+  // Max test inputs per A/B experiment (each costs 2 generations + 1 judgment).
+  EXPERIMENT_MAX_INPUTS: z.coerce.number().int().min(1).max(200).default(20),
+  // redis = shared by every instance (production); memory = per process (tests); none = off.
+  CACHE_DRIVER: z.enum(['redis', 'memory', 'none']).default('redis'),
+  CACHE_TTL_SECONDS: z.coerce.number().int().min(1).default(60),
 });
 
 /**

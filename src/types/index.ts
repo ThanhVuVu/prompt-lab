@@ -31,6 +31,8 @@ export interface PublicUser {
   email: string;
   name: string;
   role: Role;
+  /** Stage 10: monthly Claude budget in USD; null = the default budget */
+  monthlyBudgetUsd: number | null;
   createdAt: Date;
 }
 

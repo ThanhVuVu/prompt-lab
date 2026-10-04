@@ -1,0 +1,78 @@
+# Stage 10 — A/B experiments, spending, caching.
+# Run: `npm run dev` + `npm run worker:dev` + Redis; ANTHROPIC_API_KEY set for the worker.
+# Each experiment input costs 3 Claude calls (A, B, judge).
+@base = http://localhost:3000
+
+# @name login
+POST {{base}}/api/auth/login
+Content-Type: application/json
+
+{ "email": "alice@example.local", "password": "password123" }
+
+@token = {{login.response.body.token}}
+
+### Prompt A
+# @name a
+POST {{base}}/api/prompts
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{ "title": "Ticket summary (detailed)", "content": "Summarise this customer support ticket for an agent: {{ticket}}" }
+
+### Prompt B
+# @name b
+POST {{base}}/api/prompts
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{ "title": "Ticket summary (one line)", "content": "In ONE sentence of at most 20 words, state the customer's problem and what they want. Ticket: {{ticket}}" }
+
+### Run the A/B experiment → 202
+# @name exp
+POST {{base}}/api/experiments
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "name": "Detailed vs one-line ticket summaries",
+  "promptAId": "{{a.response.body.id}}",
+  "promptBId": "{{b.response.body.id}}",
+  "inputs": [
+    { "ticket": "I ordered a blue jacket on May 3rd, order #4411. It still hasn't arrived and tracking hasn't updated in a week. Please send a replacement or refund." },
+    { "ticket": "The app logs me out every time I switch to another app. iPhone 15, latest version. Really annoying, please fix." },
+    { "ticket": "I was charged twice for my March subscription ($12.99 x2). I need one charge refunded." },
+    { "ticket": "Can I change the delivery address on order #5520? I'm moving next week." },
+    { "ticket": "Your coupon SPRING20 says invalid at checkout but the email says it's valid until the 30th." },
+    { "ticket": "The size chart says M fits chest 96-100cm but the M shirt I got is much smaller. Want to exchange for L." }
+  ]
+}
+
+### Poll: status, per-input outputs, judgments and the statistical summary
+GET {{base}}{{exp.response.body.statusUrl}}
+Authorization: Bearer {{token}}
+
+### My experiments
+GET {{base}}/api/experiments
+Authorization: Bearer {{token}}
+
+### What have I spent this month? (by model, operation and day, plus budget left)
+GET {{base}}/api/usage/me
+Authorization: Bearer {{token}}
+
+### Admin: spend per user
+GET {{base}}/api/usage/users
+Authorization: Bearer {{token}}
+
+### Admin: set bob's monthly budget to $2
+PATCH {{base}}/api/users/bob
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{ "monthlyBudgetUsd": 2 }
+
+### Cache: read the same prompt twice, then compare cache hits/misses
+GET {{base}}/api/prompts/{{a.response.body.id}}
+Authorization: Bearer {{token}}
+
+###
+GET {{base}}/metrics

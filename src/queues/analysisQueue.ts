@@ -9,6 +9,8 @@ import { Queue } from 'bullmq';
 import IORedis from 'ioredis';
 import { env } from '../config/env';
 
+// Carries every job type (analyses and, since Stage 10, experiments): the
+// message is only a job id, and the worker reads the type from the jobs row.
 export const ANALYSIS_QUEUE = 'prompt-analysis';
 
 /** The message we put on the queue: just a pointer to the jobs row. */

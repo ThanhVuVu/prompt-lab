@@ -1,6 +1,7 @@
 import { Prisma, PrismaClient } from '../generated/prisma/client';
 import { AuthUser, CreatePromptDTO, Paginated, PaginationParams, Prompt, PromptVersion, UpdatePromptDTO } from '../types';
 import { writeAudit } from './auditService';
+import { Cache, NoCache } from './cache';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -10,8 +11,14 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
  * Stage 5: every write takes the acting user and records an audit_logs row
  * in the same transaction.
  */
+const cacheKey = (id: string) => `prompt:${id}`;
+
 export class PromptService {
-  constructor(private readonly db: PrismaClient) {}
+  constructor(
+    private readonly db: PrismaClient,
+    // Stage 10: optional cache for getById (the most frequent read).
+    private readonly cache: Cache = new NoCache(),
+  ) {}
 
   async create(data: CreatePromptDTO, actor: AuthUser): Promise<Prompt> {
     return this.db.$transaction(async (tx) => {
@@ -36,7 +43,16 @@ export class PromptService {
     // prompts.id is a UUID column: Postgres REJECTS a query with id = 'abc'.
     // An id that isn't a UUID can't exist → null → 404.
     if (!UUID_RE.test(id)) return null;
-    return this.db.prompt.findUnique({ where: { id } });
+
+    // CACHE-ASIDE: 1) look in the cache, 2) on a miss read the database,
+    // 3) store the result for next time. Writes (update/delete) DELETE the
+    // key, so the next read fetches fresh data.
+    const cached = await this.cache.get<Prompt>(cacheKey(id));
+    if (cached) return reviveDates(cached);
+
+    const prompt = await this.db.prompt.findUnique({ where: { id } });
+    if (prompt) await this.cache.set(cacheKey(id), prompt);
+    return prompt;
   }
 
   /**
@@ -61,7 +77,7 @@ export class PromptService {
   }
 
   async update(id: string, data: UpdatePromptDTO, actor: AuthUser, changeReason?: string): Promise<Prompt | null> {
-    return this.db.$transaction(async (tx) => {
+    const updated = await this.db.$transaction(async (tx) => {
       const existing = await tx.prompt.findUnique({ where: { id } });
       if (!existing) return null;
 
@@ -99,16 +115,22 @@ export class PromptService {
       });
       return updated;
     });
+    // Invalidate AFTER the commit: invalidating inside the transaction would let
+    // a concurrent read re-cache the old row before the commit lands.
+    await this.cache.del(cacheKey(id));
+    return updated;
   }
 
   async delete(id: string, actor: AuthUser): Promise<boolean> {
-    return this.db.$transaction(async (tx) => {
+    const deleted = await this.db.$transaction(async (tx) => {
       const { count } = await tx.prompt.deleteMany({ where: { id } });
       if (count > 0) {
         await writeAudit(tx, { userId: actor.id, action: 'PROMPT_DELETED', resourceType: 'prompt', resourceId: id });
       }
       return count > 0;
     });
+    await this.cache.del(cacheKey(id));
+    return deleted;
   }
 
   async listVersions(promptId: string): Promise<PromptVersion[]> {
@@ -117,4 +139,9 @@ export class PromptService {
       orderBy: { version: 'desc' },
     });
   }
+}
+
+/** JSON has no Date type: cached dates come back as ISO strings. */
+function reviveDates(prompt: Prompt): Prompt {
+  return { ...prompt, createdAt: new Date(prompt.createdAt), updatedAt: new Date(prompt.updatedAt) };
 }

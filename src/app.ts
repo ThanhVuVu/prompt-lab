@@ -16,7 +16,10 @@ import { securityHeaders } from './middleware/security';
 import { apiRoutes } from './routes';
 import { BullJobQueue, JobQueue } from './queues/analysisQueue';
 import { AuthService } from './services/authService';
+import { Cache, createCache } from './services/cache';
+import { CostService } from './services/costService';
 import { EchoService } from './services/echoService';
+import { ExperimentService } from './services/experimentService';
 import { JobService } from './services/jobService';
 import { PromptService } from './services/promptService';
 import './types/express';
@@ -29,21 +32,32 @@ export interface AppServices {
   promptService: PromptService;
   jobQueue: JobQueue;
   jobService: JobService;
+  cache: Cache;
+  costService: CostService;
+  experimentService: ExperimentService;
 }
 
-export function buildServices(db: PrismaClient = prisma, jobQueue: JobQueue = new BullJobQueue()): AppServices {
+export function buildServices(
+  db: PrismaClient = prisma,
+  jobQueue: JobQueue = new BullJobQueue(),
+  cache: Cache = createCache(),
+): AppServices {
+  const costService = new CostService(db);
   return {
     db,
     echoService: new EchoService(),
     authService: new AuthService(db),
-    promptService: new PromptService(db),
+    promptService: new PromptService(db, cache),
     jobQueue,
-    jobService: new JobService(db, jobQueue),
+    jobService: new JobService(db, jobQueue, costService),
+    cache,
+    costService,
+    experimentService: new ExperimentService(db, jobQueue, costService),
   };
 }
 
 export function createApp(overrides: Partial<AppServices> = {}): Express {
-  const services: AppServices = { ...buildServices(overrides.db, overrides.jobQueue), ...overrides };
+  const services: AppServices = { ...buildServices(overrides.db, overrides.jobQueue, overrides.cache), ...overrides };
 
   const app = express();
 

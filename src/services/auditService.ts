@@ -14,7 +14,8 @@ export type AuditAction =
   | 'PROMPT_UPDATED'
   | 'PROMPT_DELETED'
   | 'PROMPT_ANALYSIS_REQUESTED'
-  | 'EXPERIMENT_CREATED';
+  | 'EXPERIMENT_CREATED'
+  | 'EXPERIMENT_ANALYSIS_REQUESTED';
 
 export interface AuditEntry {
   userId: string | null;
