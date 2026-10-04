@@ -1,6 +1,6 @@
 import { NextFunction, Request, RequestHandler, Response } from 'express';
 import { z } from 'zod';
-import { ErrorDetail, NotImplementedError } from '../utils/errors';
+import { ErrorDetail, ValidationError } from '../utils/errors';
 
 /**
  * Converts zod's error into our API's `details` format:
@@ -23,14 +23,20 @@ export function formatZodError(error: z.ZodError): ErrorDetail[] {
  * req.body completely. "Never trust client input" — validate at the edge.
  */
 export function validateBody(schema: z.ZodType): RequestHandler {
-  return (_req: Request, _res: Response, next: NextFunction) => {
-    // TODO(stage3): Run schema.safeParse(req.body).
-    // TODO(stage3): If it failed → call next(new ValidationError('Invalid request body', formatZodError(result.error)))
-    //               (import ValidationError from '../utils/errors').
-    // TODO(stage3): If it succeeded → REPLACE req.body with result.data, then call next().
-    //               Why replace it? result.data has defaults applied (tags: [],
-    //               isPublic: false) and unknown fields stripped.
-    // Gotcha: in Express 5, req.body is `undefined` when the client sends no body.
-    next(new NotImplementedError('stage3: validateBody() in src/middleware/validation.ts'));
+  return (req: Request, _res: Response, next: NextFunction) => {
+    // safeParse never throws: it returns { success: true, data } or { success: false, error }.
+    // Note: in Express 5, req.body is `undefined` when no body was sent — the
+    // schema rejects that too, because undefined is not an object.
+    const result = schema.safeParse(req.body);
+
+    if (!result.success) {
+      next(new ValidationError('Invalid request body', formatZodError(result.error)));
+      return;
+    }
+
+    // Replace the raw body with the parsed one: defaults applied, unknown fields
+    // stripped, strings trimmed. From here on, controllers can trust req.body.
+    req.body = result.data;
+    next();
   };
 }

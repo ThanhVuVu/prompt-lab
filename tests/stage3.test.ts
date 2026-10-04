@@ -47,6 +47,7 @@ describe('Stage 3: /api/prompts', () => {
       expect(typeof res.body.id).toBe('string');
       expect(res.body.createdAt).toBeDefined();
       expect(res.body.updatedAt).toBeDefined();
+      expect(res.headers.location).toBe(`/api/prompts/${res.body.id}`);
     });
 
     it('applies defaults: tags = [], isPublic = false', async () => {

@@ -9,45 +9,49 @@
  */
 import { z } from 'zod';
 
+// Field rules are defined once and reused by the create AND update schemas,
+// so the two can never drift apart.
+const title = z.string().trim().min(3).max(100);
+const content = z.string().min(10).max(10000);
+// A tag is a short, non-empty label. Without these limits a client could send
+// "" or a 1 MB string as a tag.
+const tags = z.array(z.string().trim().min(1).max(30)).max(5);
+const isPublic = z.boolean();
+
 /**
  * POST /api/prompts body.
- * Rules (from the learning plan):
  *   title     required, string, 3-100 characters (after trimming spaces)
  *   content   required, string, 10-10000 characters
  *   tags      optional, array of strings, max 5 tags, defaults to []
  *   isPublic  optional, boolean, defaults to false
+ *
+ * Unknown keys (id, version, createdBy…) are STRIPPED by z.object() — this is
+ * what protects us from "mass assignment".
  */
 export const createPromptSchema = z.object({
-  // Worked example:
-  title: z.string().trim().min(3).max(100),
-
-  // TODO(stage3): content
-  // TODO(stage3): tags — also think: should a tag be allowed to be ""? 500 chars long?
-  // TODO(stage3): isPublic
+  title,
+  content,
+  tags: tags.default([]),
+  isPublic: isPublic.default(false),
 });
 
 /**
- * PATCH /api/prompts/:id body.
- * Same rules as create, but every field is optional — the client only sends
- * what changes. An EMPTY body {} should be rejected (400): nothing to update.
+ * PATCH /api/prompts/:id body: every field optional, NO defaults
+ * (a default here would silently overwrite existing values), and at least
+ * one field must be present.
  */
-// TODO(stage3): Build this from createPromptSchema. Hints:
-//   - .partial() makes every field optional
-//   - but .partial() keeps the DEFAULTS — so {} would become { tags: [], isPublic: false }
-//     and silently wipe the prompt's tags! Find a way to avoid that.
-//   - .refine((data) => Object.keys(data).length > 0, { message: '...' })
-export const updatePromptSchema = z.object({});
+export const updatePromptSchema = z
+  .object({ title, content, tags, isPublic })
+  .partial()
+  .refine((data) => Object.keys(data).length > 0, {
+    message: 'Provide at least one field to update',
+  });
 
 /**
  * GET /api/prompts query string: ?page=2&limit=20
  * Query values are ALWAYS strings ("2"), so we coerce them to numbers.
- *   page   integer >= 1, default 1
- *   limit  integer 1-100, default 10
- * Anything else (page=0, page=abc, limit=1000) → 400.
  */
 export const listPromptsQuerySchema = z.object({
-  // Worked example:
   page: z.coerce.number().int().min(1).default(1),
-
-  // TODO(stage3): limit
+  limit: z.coerce.number().int().min(1).max(100).default(10),
 });
