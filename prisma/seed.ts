@@ -3,6 +3,7 @@
  * (also runs automatically after `npm run db:reset`).
  */
 import 'dotenv/config';
+import bcrypt from 'bcryptjs';
 import { createPrismaClient } from '../src/config/database';
 
 const prisma = createPrismaClient(process.env.DATABASE_URL);
@@ -22,13 +23,18 @@ const prompts = [
   },
 ];
 
+// Demo accounts — log in with POST /api/auth/login. Dev only!
+const DEMO_PASSWORD = 'password123';
+const users = [
+  { id: 'alice', role: 'admin' },
+  { id: 'bob', role: 'user' },
+];
+
 async function main(): Promise<void> {
-  for (const id of ['alice', 'bob']) {
-    await prisma.user.upsert({
-      where: { id },
-      update: {},
-      create: { id, email: `${id}@example.local`, name: id[0].toUpperCase() + id.slice(1) },
-    });
+  const passwordHash = await bcrypt.hash(DEMO_PASSWORD, 10);
+  for (const { id, role } of users) {
+    const data = { email: `${id}@example.local`, name: id[0].toUpperCase() + id.slice(1), role, passwordHash };
+    await prisma.user.upsert({ where: { id }, update: data, create: { id, ...data } });
   }
 
   for (const p of prompts) {
@@ -42,7 +48,7 @@ async function main(): Promise<void> {
       },
     });
   }
-  console.log('Seeded users alice, bob and', prompts.length, 'prompts.');
+  console.log(`Seeded alice (admin) and bob (user), password "${DEMO_PASSWORD}", and ${prompts.length} prompts.`);
 }
 
 main()

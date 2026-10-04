@@ -14,6 +14,31 @@ export interface EchoResponse {
   timestamp: string;
 }
 
+// ── Stage 5: users & auth ────────────────────────────────────────────────────
+
+export const ROLES = ['admin', 'user', 'viewer'] as const;
+export type Role = (typeof ROLES)[number];
+
+/** Who is making the request (attached to req.user by requireAuth). */
+export interface AuthUser {
+  id: string;
+  role: Role;
+}
+
+/** A user as the API returns it: never includes passwordHash or tokenVersion. */
+export interface PublicUser {
+  id: string;
+  email: string;
+  name: string;
+  role: Role;
+  createdAt: Date;
+}
+
+export interface AuthResult {
+  token: string;
+  user: PublicUser;
+}
+
 // ── Stage 3: prompts ─────────────────────────────────────────────────────────
 
 export interface Prompt {
@@ -25,7 +50,7 @@ export interface Prompt {
   version: number;
   createdAt: Date;
   updatedAt: Date;
-  /** User ID of the owner (from the x-user-id header until Stage 5) */
+  /** User ID of the owner */
   createdBy: string;
   tags: string[];
   isPublic: boolean;

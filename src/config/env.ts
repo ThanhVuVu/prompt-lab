@@ -29,7 +29,16 @@ const envSchema = z.object({
   // to the wrong database.
   DATABASE_URL: z.url({ protocol: /^postgres(ql)?$/ }),
 
-  // Stage 5+: add JWT_SECRET, ANTHROPIC_API_KEY here as you need them.
+  // Signs every JWT. Anyone who knows it can forge a token for ANY user, so it
+  // must be long, random, secret, and different in every environment.
+  JWT_SECRET: z.string().min(32, 'JWT_SECRET must be at least 32 characters'),
+  // How long a token stays valid ("15m", "1h", "7d").
+  JWT_EXPIRES_IN: z.string().regex(/^\d+[smhd]$/).default('1h'),
+  // bcrypt cost: each +1 doubles the hashing time. 12 ≈ 250ms in production;
+  // tests use 4 to stay fast.
+  BCRYPT_ROUNDS: z.coerce.number().int().min(4).max(15).default(12),
+
+  // Stage 6+: add REDIS_URL, ANTHROPIC_API_KEY here as you need them.
 });
 
 export type Env = z.infer<typeof envSchema>;

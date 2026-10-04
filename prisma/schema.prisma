@@ -18,13 +18,20 @@ datasource db {
 }
 
 model User {
-  // Text, not UUID, so the Stage 4 fake-auth header (x-user-id: alice) works.
-  // New users still get a random UUID by default.
-  id        String   @id @default(uuid())
-  email     String   @unique
-  name      String
-  role      String   @default("user") // 'admin' | 'user' | 'viewer'
-  createdAt DateTime @default(now()) @map("created_at")
+  // Text, not UUID: Stage 4 users were created from the x-user-id header.
+  // Every new user gets a random UUID.
+  id           String   @id @default(uuid())
+  email        String   @unique
+  name         String
+  role         String   @default("user") // 'admin' | 'user' | 'viewer'
+  // NEVER the password itself: a slow, salted bcrypt hash of it.
+  passwordHash String   @map("password_hash")
+  // Embedded in every JWT. Logout increments it, which invalidates ALL of
+  // this user's existing tokens at once.
+  tokenVersion Int      @default(0) @map("token_version")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  auditLogs AuditLog[]
 
   prompts        Prompt[]
   promptVersions PromptVersion[]
@@ -109,4 +116,24 @@ model ExperimentResult {
 
   @@index([experimentId])
   @@map("experiment_results")
+}
+
+/// Append-only record of who did what, when. Required for compliance (SOC 2, GDPR)
+/// and invaluable for answering "who changed this prompt?".
+model AuditLog {
+  id           String   @id @default(uuid()) @db.Uuid
+  // Nullable: failed logins may not belong to any known user.
+  userId       String?  @map("user_id")
+  action       String // e.g. 'PROMPT_UPDATED', 'USER_LOGGED_IN'
+  resourceType String?  @map("resource_type") // 'prompt' | 'user'
+  resourceId   String?  @map("resource_id")
+  details      Json?
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  // SetNull, not Cascade: deleting a user must not erase the evidence of what they did.
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([userId, createdAt])
+  @@index([resourceType, resourceId])
+  @@map("audit_logs")
 }

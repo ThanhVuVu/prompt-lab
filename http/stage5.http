@@ -1,0 +1,43 @@
+# Stage 5 — auth. Run `npm run db:seed` first (alice = admin, bob = user, password "password123").
+@base = http://localhost:3000
+
+### Sign up a new user
+POST {{base}}/api/auth/signup
+Content-Type: application/json
+
+{ "email": "carol@example.com", "password": "a-long-password", "name": "Carol" }
+
+### Log in as alice — the named request lets later requests reuse the token
+# @name login
+POST {{base}}/api/auth/login
+Content-Type: application/json
+
+{ "email": "alice@example.local", "password": "password123" }
+
+@token = {{login.response.body.token}}
+
+### Who am I?
+GET {{base}}/api/auth/me
+Authorization: Bearer {{token}}
+
+### No token → 401
+GET {{base}}/api/prompts
+
+### List prompts I can see (mine + public)
+GET {{base}}/api/prompts
+Authorization: Bearer {{token}}
+
+### Admin: audit trail
+GET {{base}}/api/audit-logs?limit=20
+Authorization: Bearer {{token}}
+
+### Admin: demote bob to viewer
+PATCH {{base}}/api/users/bob
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{ "role": "viewer" }
+
+### Log out (every token alice holds stops working)
+POST {{base}}/api/auth/logout
+Authorization: Bearer {{token}}

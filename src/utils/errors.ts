@@ -32,6 +32,20 @@ export class ValidationError extends AppError {
   }
 }
 
+/** 401 — we don't know who you are (missing, invalid or expired credentials). */
+export class UnauthorizedError extends AppError {
+  constructor(message = 'Authentication required') {
+    super(401, 'UNAUTHORIZED', message);
+  }
+}
+
+/** 409 — the request conflicts with the current state (e.g. email already taken). */
+export class ConflictError extends AppError {
+  constructor(message: string) {
+    super(409, 'CONFLICT', message);
+  }
+}
+
 /** 403 — we know who you are, but you are not allowed to do this. */
 export class ForbiddenError extends AppError {
   constructor(message = 'You are not allowed to perform this action') {

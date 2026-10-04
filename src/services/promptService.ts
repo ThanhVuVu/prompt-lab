@@ -1,25 +1,19 @@
-import { PrismaClient } from '../generated/prisma/client';
-import { CreatePromptDTO, Paginated, PaginationParams, Prompt, PromptVersion, UpdatePromptDTO } from '../types';
+import { Prisma, PrismaClient } from '../generated/prisma/client';
+import { AuthUser, CreatePromptDTO, Paginated, PaginationParams, Prompt, PromptVersion, UpdatePromptDTO } from '../types';
+import { writeAudit } from './auditService';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /**
- * Business logic for prompts, now backed by PostgreSQL via Prisma.
+ * Business logic for prompts, backed by PostgreSQL via Prisma.
  *
- * Compare with the Stage 3 version (git show stage-3:src/services/promptService.ts):
- * same methods, same return values — but every method is now `async`, because
- * talking to the database means waiting on the network.
+ * Stage 5: every write takes the acting user and records an audit_logs row
+ * in the same transaction.
  */
 export class PromptService {
-  // The client is INJECTED, so tests could pass a different one.
   constructor(private readonly db: PrismaClient) {}
 
-  /**
-   * Insert the prompt AND its version-1 history row in one TRANSACTION:
-   * either both rows are written, or neither is. Without it, a crash between
-   * the two inserts would leave a prompt with no history.
-   */
-  async create(data: CreatePromptDTO, userId: string): Promise<Prompt> {
+  async create(data: CreatePromptDTO, actor: AuthUser): Promise<Prompt> {
     return this.db.$transaction(async (tx) => {
       const prompt = await tx.prompt.create({
         data: {
@@ -27,43 +21,46 @@ export class PromptService {
           content: data.content,
           tags: data.tags,
           isPublic: data.isPublic,
-          createdBy: userId,
+          createdBy: actor.id,
         },
       });
       await tx.promptVersion.create({
-        data: { promptId: prompt.id, version: 1, content: prompt.content, changedBy: userId, changeReason: 'Created' },
+        data: { promptId: prompt.id, version: 1, content: prompt.content, changedBy: actor.id, changeReason: 'Created' },
       });
+      await writeAudit(tx, { userId: actor.id, action: 'PROMPT_CREATED', resourceType: 'prompt', resourceId: prompt.id });
       return prompt;
     });
   }
 
   async getById(id: string): Promise<Prompt | null> {
-    // prompts.id is a UUID column: Postgres REJECTS a query with id = 'abc'
-    // (it would surface as a 500). An id that isn't a UUID can't exist → null → 404.
+    // prompts.id is a UUID column: Postgres REJECTS a query with id = 'abc'.
+    // An id that isn't a UUID can't exist → null → 404.
     if (!UUID_RE.test(id)) return null;
     return this.db.prompt.findUnique({ where: { id } });
   }
 
-  async list({ page, limit }: PaginationParams): Promise<Paginated<Prompt>> {
-    // Two queries in one transaction so `total` and `data` see the same snapshot.
+  /**
+   * One page of the prompts `viewer` may see: their own + public ones
+   * (admins see everything). The filter runs in SQL — never fetch everything
+   * and filter in JavaScript.
+   */
+  async list({ page, limit }: PaginationParams, viewer: AuthUser): Promise<Paginated<Prompt>> {
+    const where: Prisma.PromptWhereInput =
+      viewer.role === 'admin' ? {} : { OR: [{ isPublic: true }, { createdBy: viewer.id }] };
+
     const [total, data] = await this.db.$transaction([
-      this.db.prompt.count(),
+      this.db.prompt.count({ where }),
       this.db.prompt.findMany({
-        // Without ORDER BY, SQL returns rows in NO guaranteed order — pagination
-        // could show the same row twice. `id` breaks ties between equal timestamps.
+        where,
         orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
-        skip: (page - 1) * limit, // OFFSET
-        take: limit, //               LIMIT
+        skip: (page - 1) * limit,
+        take: limit,
       }),
     ]);
     return { data, total, page, limit };
   }
 
-  /**
-   * Partial update. When `content` changes, bump `version` and record the new
-   * content in prompt_versions — atomically.
-   */
-  async update(id: string, data: UpdatePromptDTO, userId: string, changeReason?: string): Promise<Prompt | null> {
+  async update(id: string, data: UpdatePromptDTO, actor: AuthUser, changeReason?: string): Promise<Prompt | null> {
     return this.db.$transaction(async (tx) => {
       const existing = await tx.prompt.findUnique({ where: { id } });
       if (!existing) return null;
@@ -73,7 +70,6 @@ export class PromptService {
       const updated = await tx.prompt.update({
         where: { id },
         data: {
-          // `undefined` means "don't touch this column" in Prisma.
           title: data.title,
           content: data.content,
           tags: data.tags,
@@ -88,23 +84,33 @@ export class PromptService {
             promptId: id,
             version: updated.version,
             content: updated.content,
-            changedBy: userId,
+            changedBy: actor.id,
             changeReason: changeReason ?? null,
           },
         });
       }
+
+      await writeAudit(tx, {
+        userId: actor.id,
+        action: 'PROMPT_UPDATED',
+        resourceType: 'prompt',
+        resourceId: id,
+        details: { fields: Object.keys(data), oldVersion: existing.version, newVersion: updated.version },
+      });
       return updated;
     });
   }
 
-  async delete(id: string): Promise<boolean> {
-    // deleteMany doesn't throw when nothing matches (delete() would).
-    // prompt_versions rows go too: ON DELETE CASCADE.
-    const { count } = await this.db.prompt.deleteMany({ where: { id } });
-    return count > 0;
+  async delete(id: string, actor: AuthUser): Promise<boolean> {
+    return this.db.$transaction(async (tx) => {
+      const { count } = await tx.prompt.deleteMany({ where: { id } });
+      if (count > 0) {
+        await writeAudit(tx, { userId: actor.id, action: 'PROMPT_DELETED', resourceType: 'prompt', resourceId: id });
+      }
+      return count > 0;
+    });
   }
 
-  /** History of a prompt's content, newest first. */
   async listVersions(promptId: string): Promise<PromptVersion[]> {
     return this.db.promptVersion.findMany({
       where: { promptId },

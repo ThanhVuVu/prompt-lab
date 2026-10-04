@@ -7,6 +7,7 @@
 import { Express } from 'express';
 import request from 'supertest';
 import { createApp } from '../src/app';
+import { createUser, TestUser } from './helpers/auth';
 import { resetDatabase } from './helpers/db';
 
 const validPrompt = {
@@ -17,17 +18,22 @@ const validPrompt = {
 
 describe('Stage 3: /api/prompts', () => {
   let app: Express;
+  let alice: TestUser;
+  let bob: TestUser;
 
   // Stage 4: data now lives in PostgreSQL, so "fresh state" means wiping the
   // test database before every test — otherwise tests affect each other.
   beforeEach(async () => {
     await resetDatabase();
     app = createApp();
+    // Stage 5: every request needs a real token.
+    alice = await createUser(app, 'alice');
+    bob = await createUser(app, 'bob');
   });
 
-  /** Helper: create a prompt as `userId` and return the response body. */
-  async function createPrompt(body: object = validPrompt, userId = 'alice') {
-    const res = await request(app).post('/api/prompts').set('x-user-id', userId).send(body);
+  /** Helper: create a prompt as `user` (default: alice) and return the response body. */
+  async function createPrompt(body: object = validPrompt, user: TestUser = alice) {
+    const res = await request(app).post('/api/prompts').set(user.auth).send(body);
     expect(res.status).toBe(201);
     return res.body;
   }
@@ -35,7 +41,7 @@ describe('Stage 3: /api/prompts', () => {
   // ───────────────────────────────────────────────────────────────── create ──
   describe('POST /api/prompts', () => {
     it('creates a prompt → 201 with server-generated fields', async () => {
-      const res = await request(app).post('/api/prompts').set('x-user-id', 'alice').send(validPrompt);
+      const res = await request(app).post('/api/prompts').set(alice.auth).send(validPrompt);
 
       expect(res.status).toBe(201);
       expect(res.body).toMatchObject({
@@ -44,7 +50,7 @@ describe('Stage 3: /api/prompts', () => {
         tags: validPrompt.tags,
         isPublic: false,
         version: 1,
-        createdBy: 'alice',
+        createdBy: alice.id,
       });
       expect(typeof res.body.id).toBe('string');
       expect(res.body.createdAt).toBeDefined();
@@ -62,7 +68,7 @@ describe('Stage 3: /api/prompts', () => {
       const body = await createPrompt({ ...validPrompt, id: 'hacked', version: 99, createdBy: 'mallory' });
       expect(body.id).not.toBe('hacked');
       expect(body.version).toBe(1);
-      expect(body.createdBy).toBe('alice');
+      expect(body.createdBy).toBe(alice.id);
     });
 
     it.each([
@@ -78,7 +84,7 @@ describe('Stage 3: /api/prompts', () => {
       ['tags is not an array', { ...validPrompt, tags: 'ai' }, 'tags'],
       ['isPublic is not a boolean', { ...validPrompt, isPublic: 'yes' }, 'isPublic'],
     ])('400 when %s', async (_case, body, field) => {
-      const res = await request(app).post('/api/prompts').send(body);
+      const res = await request(app).post('/api/prompts').set(alice.auth).send(body);
 
       expect(res.status).toBe(400);
       expect(res.body.error.code).toBe('VALIDATION_ERROR');
@@ -88,7 +94,7 @@ describe('Stage 3: /api/prompts', () => {
     });
 
     it('400 when the body is empty', async () => {
-      const res = await request(app).post('/api/prompts');
+      const res = await request(app).post('/api/prompts').set(alice.auth);
       expect(res.status).toBe(400);
     });
 
@@ -107,14 +113,14 @@ describe('Stage 3: /api/prompts', () => {
     it('returns the prompt → 200', async () => {
       const created = await createPrompt();
 
-      const res = await request(app).get(`/api/prompts/${created.id}`);
+      const res = await request(app).get(`/api/prompts/${created.id}`).set(alice.auth);
 
       expect(res.status).toBe(200);
       expect(res.body).toEqual(created);
     });
 
     it('404 when the prompt does not exist', async () => {
-      const res = await request(app).get('/api/prompts/does-not-exist');
+      const res = await request(app).get('/api/prompts/does-not-exist').set(alice.auth);
 
       expect(res.status).toBe(404);
       expect(res.body.error.code).toBe('NOT_FOUND');
@@ -124,7 +130,7 @@ describe('Stage 3: /api/prompts', () => {
   // ─────────────────────────────────────────────────────────────────── list ──
   describe('GET /api/prompts', () => {
     it('returns an empty page when there are no prompts', async () => {
-      const res = await request(app).get('/api/prompts');
+      const res = await request(app).get('/api/prompts').set(alice.auth);
 
       expect(res.status).toBe(200);
       expect(res.body).toEqual({ data: [], total: 0, page: 1, limit: 10 });
@@ -135,17 +141,17 @@ describe('Stage 3: /api/prompts', () => {
         await createPrompt({ ...validPrompt, title: `Prompt number ${i}` });
       }
 
-      const page1 = await request(app).get('/api/prompts?page=1&limit=2');
+      const page1 = await request(app).get('/api/prompts?page=1&limit=2').set(alice.auth);
       expect(page1.status).toBe(200);
       expect(page1.body.total).toBe(3);
       expect(page1.body.page).toBe(1);
       expect(page1.body.limit).toBe(2);
       expect(page1.body.data.map((p: { title: string }) => p.title)).toEqual(['Prompt number 1', 'Prompt number 2']);
 
-      const page2 = await request(app).get('/api/prompts?page=2&limit=2');
+      const page2 = await request(app).get('/api/prompts?page=2&limit=2').set(alice.auth);
       expect(page2.body.data.map((p: { title: string }) => p.title)).toEqual(['Prompt number 3']);
 
-      const page3 = await request(app).get('/api/prompts?page=3&limit=2');
+      const page3 = await request(app).get('/api/prompts?page=3&limit=2').set(alice.auth);
       expect(page3.body.data).toEqual([]);
       expect(page3.body.total).toBe(3);
     });
@@ -153,7 +159,7 @@ describe('Stage 3: /api/prompts', () => {
     it.each([['page=0'], ['page=-1'], ['page=abc'], ['page=1.5'], ['limit=0'], ['limit=101'], ['limit=ten']])(
       '400 for invalid query %s',
       async (query) => {
-        const res = await request(app).get(`/api/prompts?${query}`);
+        const res = await request(app).get(`/api/prompts?${query}`).set(alice.auth);
         expect(res.status).toBe(400);
         expect(res.body.error.code).toBe('VALIDATION_ERROR');
       },
@@ -167,7 +173,7 @@ describe('Stage 3: /api/prompts', () => {
 
       const res = await request(app)
         .patch(`/api/prompts/${created.id}`)
-        .set('x-user-id', 'alice')
+        .set(alice.auth)
         .send({ title: 'A better title' });
 
       expect(res.status).toBe(200);
@@ -182,7 +188,7 @@ describe('Stage 3: /api/prompts', () => {
 
       const res = await request(app)
         .patch(`/api/prompts/${created.id}`)
-        .set('x-user-id', 'alice')
+        .set(alice.auth)
         .send({ content: 'A completely rewritten prompt body.' });
 
       expect(res.status).toBe(200);
@@ -191,41 +197,42 @@ describe('Stage 3: /api/prompts', () => {
 
     it('the update is persisted (visible on a later GET)', async () => {
       const created = await createPrompt();
-      await request(app).patch(`/api/prompts/${created.id}`).set('x-user-id', 'alice').send({ isPublic: true });
+      await request(app).patch(`/api/prompts/${created.id}`).set(alice.auth).send({ isPublic: true });
 
-      const res = await request(app).get(`/api/prompts/${created.id}`);
+      const res = await request(app).get(`/api/prompts/${created.id}`).set(alice.auth);
       expect(res.body.isPublic).toBe(true);
     });
 
     it('403 when the caller is not the owner', async () => {
-      const created = await createPrompt(validPrompt, 'alice');
+      // Public, so bob can SEE it (a private one would be a 404 for him — Stage 5).
+      const created = await createPrompt({ ...validPrompt, isPublic: true }, alice);
 
       const res = await request(app)
         .patch(`/api/prompts/${created.id}`)
-        .set('x-user-id', 'bob')
+        .set(bob.auth)
         .send({ title: 'Hacked by bob' });
 
       expect(res.status).toBe(403);
       expect(res.body.error.code).toBe('FORBIDDEN');
 
-      const after = await request(app).get(`/api/prompts/${created.id}`);
+      const after = await request(app).get(`/api/prompts/${created.id}`).set(alice.auth);
       expect(after.body.title).toBe(validPrompt.title);
     });
 
     it('404 when the prompt does not exist', async () => {
-      const res = await request(app).patch('/api/prompts/nope').send({ title: 'Whatever' });
+      const res = await request(app).patch('/api/prompts/nope').set(alice.auth).send({ title: 'Whatever' });
       expect(res.status).toBe(404);
     });
 
     it('400 for an empty update body {}', async () => {
       const created = await createPrompt();
-      const res = await request(app).patch(`/api/prompts/${created.id}`).set('x-user-id', 'alice').send({});
+      const res = await request(app).patch(`/api/prompts/${created.id}`).set(alice.auth).send({});
       expect(res.status).toBe(400);
     });
 
     it('400 when an updated field breaks a rule', async () => {
       const created = await createPrompt();
-      const res = await request(app).patch(`/api/prompts/${created.id}`).set('x-user-id', 'alice').send({ title: 'x' });
+      const res = await request(app).patch(`/api/prompts/${created.id}`).set(alice.auth).send({ title: 'x' });
       expect(res.status).toBe(400);
     });
   });
@@ -235,23 +242,24 @@ describe('Stage 3: /api/prompts', () => {
     it('owner can delete → 204 with an empty body, then GET → 404', async () => {
       const created = await createPrompt();
 
-      const res = await request(app).delete(`/api/prompts/${created.id}`).set('x-user-id', 'alice');
+      const res = await request(app).delete(`/api/prompts/${created.id}`).set(alice.auth);
       expect(res.status).toBe(204);
       expect(res.text).toBe('');
 
-      const after = await request(app).get(`/api/prompts/${created.id}`);
+      const after = await request(app).get(`/api/prompts/${created.id}`).set(alice.auth);
       expect(after.status).toBe(404);
     });
 
     it('403 when the caller is not the owner', async () => {
-      const created = await createPrompt(validPrompt, 'alice');
+      // Public, so bob can SEE it (a private one would be a 404 for him — Stage 5).
+      const created = await createPrompt({ ...validPrompt, isPublic: true }, alice);
 
-      const res = await request(app).delete(`/api/prompts/${created.id}`).set('x-user-id', 'bob');
+      const res = await request(app).delete(`/api/prompts/${created.id}`).set(bob.auth);
       expect(res.status).toBe(403);
     });
 
     it('404 when the prompt does not exist', async () => {
-      const res = await request(app).delete('/api/prompts/nope');
+      const res = await request(app).delete('/api/prompts/nope').set(alice.auth);
       expect(res.status).toBe(404);
     });
   });
