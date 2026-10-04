@@ -1,85 +1,114 @@
-import { randomUUID } from 'node:crypto';
-import { CreatePromptDTO, Paginated, PaginationParams, Prompt, UpdatePromptDTO } from '../types';
+import { PrismaClient } from '../generated/prisma/client';
+import { CreatePromptDTO, Paginated, PaginationParams, Prompt, PromptVersion, UpdatePromptDTO } from '../types';
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /**
- * Business logic for prompts, stored IN MEMORY (a Map).
- * Restart the server → all data is gone. Stage 4 swaps the Map for PostgreSQL;
- * because controllers only talk to this class, they won't need to change much.
+ * Business logic for prompts, now backed by PostgreSQL via Prisma.
  *
- * Rules:
- *  - No HTTP here (no req/res/status codes).
- *  - "Not found" is returned as `null` / `false`; the CONTROLLER decides that
- *    means 404.
+ * Compare with the Stage 3 version (git show stage-3:src/services/promptService.ts):
+ * same methods, same return values — but every method is now `async`, because
+ * talking to the database means waiting on the network.
  */
 export class PromptService {
-  private prompts = new Map<string, Prompt>();
+  // The client is INJECTED, so tests could pass a different one.
+  constructor(private readonly db: PrismaClient) {}
 
-  create(data: CreatePromptDTO, userId: string): Prompt {
-    const now = new Date();
-    const prompt: Prompt = {
-      id: randomUUID(),
-      title: data.title,
-      content: data.content,
-      tags: [...data.tags],
-      isPublic: data.isPublic,
-      version: 1,
-      createdBy: userId,
-      createdAt: now,
-      updatedAt: now,
-    };
-    this.prompts.set(prompt.id, prompt);
-    return clone(prompt);
+  /**
+   * Insert the prompt AND its version-1 history row in one TRANSACTION:
+   * either both rows are written, or neither is. Without it, a crash between
+   * the two inserts would leave a prompt with no history.
+   */
+  async create(data: CreatePromptDTO, userId: string): Promise<Prompt> {
+    return this.db.$transaction(async (tx) => {
+      const prompt = await tx.prompt.create({
+        data: {
+          title: data.title,
+          content: data.content,
+          tags: data.tags,
+          isPublic: data.isPublic,
+          createdBy: userId,
+        },
+      });
+      await tx.promptVersion.create({
+        data: { promptId: prompt.id, version: 1, content: prompt.content, changedBy: userId, changeReason: 'Created' },
+      });
+      return prompt;
+    });
   }
 
-  getById(id: string): Prompt | null {
-    const prompt = this.prompts.get(id);
-    return prompt ? clone(prompt) : null;
+  async getById(id: string): Promise<Prompt | null> {
+    // prompts.id is a UUID column: Postgres REJECTS a query with id = 'abc'
+    // (it would surface as a 500). An id that isn't a UUID can't exist → null → 404.
+    if (!UUID_RE.test(id)) return null;
+    return this.db.prompt.findUnique({ where: { id } });
   }
 
-  /** One page of prompts, oldest first (a Map keeps insertion order). */
-  list({ page, limit }: PaginationParams): Paginated<Prompt> {
-    const all = [...this.prompts.values()];
-    const offset = (page - 1) * limit;
-    return {
-      data: all.slice(offset, offset + limit).map(clone),
-      total: all.length,
-      page,
-      limit,
-    };
+  async list({ page, limit }: PaginationParams): Promise<Paginated<Prompt>> {
+    // Two queries in one transaction so `total` and `data` see the same snapshot.
+    const [total, data] = await this.db.$transaction([
+      this.db.prompt.count(),
+      this.db.prompt.findMany({
+        // Without ORDER BY, SQL returns rows in NO guaranteed order — pagination
+        // could show the same row twice. `id` breaks ties between equal timestamps.
+        orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+        skip: (page - 1) * limit, // OFFSET
+        take: limit, //               LIMIT
+      }),
+    ]);
+    return { data, total, page, limit };
   }
 
-  update(id: string, data: UpdatePromptDTO): Prompt | null {
-    const existing = this.prompts.get(id);
-    if (!existing) return null;
+  /**
+   * Partial update. When `content` changes, bump `version` and record the new
+   * content in prompt_versions — atomically.
+   */
+  async update(id: string, data: UpdatePromptDTO, userId: string, changeReason?: string): Promise<Prompt | null> {
+    return this.db.$transaction(async (tx) => {
+      const existing = await tx.prompt.findUnique({ where: { id } });
+      if (!existing) return null;
 
-    const contentChanged = data.content !== undefined && data.content !== existing.content;
+      const contentChanged = data.content !== undefined && data.content !== existing.content;
 
-    // List the updatable fields explicitly instead of `{ ...existing, ...data }`:
-    // even if a future bug let an extra field through validation, it could never
-    // overwrite id, createdBy, createdAt or version.
-    const updated: Prompt = {
-      ...existing,
-      title: data.title ?? existing.title,
-      content: data.content ?? existing.content,
-      tags: data.tags ? [...data.tags] : existing.tags,
-      isPublic: data.isPublic ?? existing.isPublic,
-      version: contentChanged ? existing.version + 1 : existing.version,
-      updatedAt: new Date(),
-    };
-    this.prompts.set(id, updated);
-    return clone(updated);
+      const updated = await tx.prompt.update({
+        where: { id },
+        data: {
+          // `undefined` means "don't touch this column" in Prisma.
+          title: data.title,
+          content: data.content,
+          tags: data.tags,
+          isPublic: data.isPublic,
+          ...(contentChanged && { version: { increment: 1 } }),
+        },
+      });
+
+      if (contentChanged) {
+        await tx.promptVersion.create({
+          data: {
+            promptId: id,
+            version: updated.version,
+            content: updated.content,
+            changedBy: userId,
+            changeReason: changeReason ?? null,
+          },
+        });
+      }
+      return updated;
+    });
   }
 
-  delete(id: string): boolean {
-    return this.prompts.delete(id);
+  async delete(id: string): Promise<boolean> {
+    // deleteMany doesn't throw when nothing matches (delete() would).
+    // prompt_versions rows go too: ON DELETE CASCADE.
+    const { count } = await this.db.prompt.deleteMany({ where: { id } });
+    return count > 0;
   }
-}
 
-/**
- * Return copies, not the stored objects: otherwise a caller doing
- * `prompt.title = 'x'` would silently change what's "in the database".
- * (A real database gives you copies automatically — Stage 4.)
- */
-function clone(prompt: Prompt): Prompt {
-  return { ...prompt, tags: [...prompt.tags] };
+  /** History of a prompt's content, newest first. */
+  async listVersions(promptId: string): Promise<PromptVersion[]> {
+    return this.db.promptVersion.findMany({
+      where: { promptId },
+      orderBy: { version: 'desc' },
+    });
+  }
 }

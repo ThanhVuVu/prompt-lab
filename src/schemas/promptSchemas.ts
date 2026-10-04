@@ -41,9 +41,16 @@ export const createPromptSchema = z.object({
  * one field must be present.
  */
 export const updatePromptSchema = z
-  .object({ title, content, tags, isPublic })
+  .object({
+    title,
+    content,
+    tags,
+    isPublic,
+    // Stored in prompt_versions when the content changes ("why did we edit this?").
+    changeReason: z.string().trim().min(1).max(500),
+  })
   .partial()
-  .refine((data) => Object.keys(data).length > 0, {
+  .refine((data) => ['title', 'content', 'tags', 'isPublic'].some((key) => key in data), {
     message: 'Provide at least one field to update',
   });
 

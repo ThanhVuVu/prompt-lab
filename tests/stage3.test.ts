@@ -7,6 +7,7 @@
 import { Express } from 'express';
 import request from 'supertest';
 import { createApp } from '../src/app';
+import { resetDatabase } from './helpers/db';
 
 const validPrompt = {
   title: 'Summarise a paper',
@@ -17,9 +18,10 @@ const validPrompt = {
 describe('Stage 3: /api/prompts', () => {
   let app: Express;
 
-  // A fresh app (and therefore a fresh, empty PromptService) for every test,
-  // so tests can't affect each other.
-  beforeEach(() => {
+  // Stage 4: data now lives in PostgreSQL, so "fresh state" means wiping the
+  // test database before every test — otherwise tests affect each other.
+  beforeEach(async () => {
+    await resetDatabase();
     app = createApp();
   });
 

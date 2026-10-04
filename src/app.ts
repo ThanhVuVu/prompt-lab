@@ -10,6 +10,7 @@ import { errorHandler, notFoundHandler } from './middleware/errorHandler';
 import { fakeAuth } from './middleware/fakeAuth';
 import { requestLogger } from './middleware/logging';
 import { apiRoutes } from './routes';
+import { prisma } from './config/database';
 import { EchoService } from './services/echoService';
 import { PromptService } from './services/promptService';
 import './types/express';
@@ -23,7 +24,7 @@ export interface AppServices {
 export function createApp(overrides: Partial<AppServices> = {}): Express {
   const services: AppServices = {
     echoService: new EchoService(),
-    promptService: new PromptService(),
+    promptService: new PromptService(prisma),
     ...overrides,
   };
 

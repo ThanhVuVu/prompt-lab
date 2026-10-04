@@ -1,19 +1,28 @@
 import { NextFunction, Request, Response } from 'express';
+import { prisma } from '../config/database';
 
 export const DEFAULT_USER_ID = 'demo-user';
 
 /**
  * ⚠️  TEMPORARY — NOT SECURE. Replaced by real JWT auth in Stage 5.
  *
- * Until we have users and logins, we pretend: whatever the client puts in the
- * `x-user-id` header is "who they are". Any client can claim to be anyone —
- * which is exactly the problem Stage 5 solves.
+ * Whatever the client puts in the `x-user-id` header is "who they are".
  *
- * It lets you practise ownership checks (403) in Stage 3:
- *   curl -H "x-user-id: alice" ...
+ * Stage 4 change: prompts.created_by is now a FOREIGN KEY to users.id, so the
+ * user must exist in the database before they can own a prompt. We upsert
+ * ("insert, or do nothing if it already exists") one on every request — a
+ * write per request is wasteful, which is one more reason Stage 5 replaces this.
  */
-export function fakeAuth(req: Request, _res: Response, next: NextFunction): void {
+export async function fakeAuth(req: Request, _res: Response, next: NextFunction): Promise<void> {
   const header = req.header('x-user-id');
-  req.userId = header && header.trim() !== '' ? header.trim() : DEFAULT_USER_ID;
+  const userId = header && header.trim() !== '' ? header.trim() : DEFAULT_USER_ID;
+
+  await prisma.user.upsert({
+    where: { id: userId },
+    update: {},
+    create: { id: userId, email: `${userId}@example.local`, name: userId },
+  });
+
+  req.userId = userId;
   next();
 }

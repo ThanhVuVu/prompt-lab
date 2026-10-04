@@ -9,26 +9,32 @@ import { createApp } from '../src/app';
 import { loadEnv } from '../src/config/env';
 import { EchoService } from '../src/services/echoService';
 
+const DATABASE_URL = 'postgresql://user:pass@localhost:5432/db';
+
 describe('Stage 2: project structure', () => {
   describe('loadEnv()', () => {
     it('applies defaults when variables are missing', () => {
-      const env = loadEnv({});
+      const env = loadEnv({ DATABASE_URL });
       expect(env.PORT).toBe(3000);
       expect(env.NODE_ENV).toBe('development');
     });
 
     it('converts PORT from string to number', () => {
-      expect(loadEnv({ PORT: '8080' }).PORT).toBe(8080);
+      expect(loadEnv({ DATABASE_URL, PORT: '8080' }).PORT).toBe(8080);
     });
 
     it('throws a helpful error for an invalid PORT', () => {
-      expect(() => loadEnv({ PORT: 'not-a-number' })).toThrow(/PORT/);
+      expect(() => loadEnv({ DATABASE_URL, PORT: 'not-a-number' })).toThrow(/PORT/);
+    });
+
+    it('requires DATABASE_URL', () => {
+      expect(() => loadEnv({})).toThrow(/DATABASE_URL/);
     });
 
     it('parses LOG_REQUESTS into a real boolean', () => {
-      expect(loadEnv({ LOG_REQUESTS: 'false' }).LOG_REQUESTS).toBe(false);
-      expect(loadEnv({ LOG_REQUESTS: 'true' }).LOG_REQUESTS).toBe(true);
-      expect(loadEnv({}).LOG_REQUESTS).toBe(true);
+      expect(loadEnv({ DATABASE_URL, LOG_REQUESTS: 'false' }).LOG_REQUESTS).toBe(false);
+      expect(loadEnv({ DATABASE_URL, LOG_REQUESTS: 'true' }).LOG_REQUESTS).toBe(true);
+      expect(loadEnv({ DATABASE_URL }).LOG_REQUESTS).toBe(true);
     });
   });
 

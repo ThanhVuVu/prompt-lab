@@ -20,6 +20,7 @@ export function promptRoutes(promptService: PromptService): Router {
   router.get('/', controller.list);
   router.post('/', validateBody(createPromptSchema), controller.create);
   router.get('/:id', controller.getById);
+  router.get('/:id/versions', controller.listVersions);
   router.patch('/:id', validateBody(updatePromptSchema), controller.update);
   router.delete('/:id', controller.delete);
 

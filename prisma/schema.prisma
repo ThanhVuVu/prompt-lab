@@ -1,0 +1,112 @@
+// Database schema — the single source of truth for our tables.
+//
+// Change this file, then run:   npm run db:migrate -- --name what_you_changed
+// Prisma diffs it against the database and writes a SQL migration in
+// prisma/migrations/. Commit those files: they are the history of the schema.
+//
+// Naming: models/fields are camelCase in TypeScript; @map/@@map give the real
+// PostgreSQL tables/columns snake_case names (the Postgres convention).
+
+generator client {
+  provider     = "prisma-client"
+  output       = "../src/generated/prisma"
+  moduleFormat = "cjs"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model User {
+  // Text, not UUID, so the Stage 4 fake-auth header (x-user-id: alice) works.
+  // New users still get a random UUID by default.
+  id        String   @id @default(uuid())
+  email     String   @unique
+  name      String
+  role      String   @default("user") // 'admin' | 'user' | 'viewer'
+  createdAt DateTime @default(now()) @map("created_at")
+
+  prompts        Prompt[]
+  promptVersions PromptVersion[]
+  experiments    Experiment[]
+
+  @@map("users")
+}
+
+model Prompt {
+  id        String   @id @default(uuid()) @db.Uuid
+  title     String   @db.VarChar(100)
+  content   String
+  version   Int      @default(1)
+  tags      String[] @default([])
+  isPublic  Boolean  @default(false) @map("is_public")
+  createdBy String   @map("created_by")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  // ON DELETE CASCADE: deleting a user deletes their prompts.
+  owner    User            @relation(fields: [createdBy], references: [id], onDelete: Cascade)
+  versions PromptVersion[]
+
+  experimentsAsA Experiment[] @relation("PromptA")
+  experimentsAsB Experiment[] @relation("PromptB")
+
+  // "Show me my prompts" filters on created_by: without an index, Postgres
+  // scans the whole table.
+  @@index([createdBy])
+  @@map("prompts")
+}
+
+/// Audit trail: one row per content version of a prompt (never updated, only inserted).
+model PromptVersion {
+  id           String   @id @default(uuid()) @db.Uuid
+  promptId     String   @map("prompt_id") @db.Uuid
+  version      Int
+  content      String
+  changedBy    String   @map("changed_by")
+  changeReason String?  @map("change_reason") @db.VarChar(500)
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  prompt        Prompt @relation(fields: [promptId], references: [id], onDelete: Cascade)
+  changedByUser User   @relation(fields: [changedBy], references: [id])
+
+  // A prompt can't have two "version 3"s. The unique index also serves
+  // "WHERE prompt_id = ? ORDER BY version" queries.
+  @@unique([promptId, version])
+  @@map("prompt_versions")
+}
+
+/// A/B test: run two prompts on the same inputs and compare (built in Stage 10).
+model Experiment {
+  id        String   @id @default(uuid()) @db.Uuid
+  promptAId String   @map("prompt_a_id") @db.Uuid
+  promptBId String   @map("prompt_b_id") @db.Uuid
+  status    String   @default("running") // 'running' | 'completed'
+  createdBy String   @map("created_by")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  promptA Prompt             @relation("PromptA", fields: [promptAId], references: [id])
+  promptB Prompt             @relation("PromptB", fields: [promptBId], references: [id])
+  owner   User               @relation(fields: [createdBy], references: [id])
+  results ExperimentResult[]
+
+  @@index([createdBy])
+  @@map("experiments")
+}
+
+model ExperimentResult {
+  id            String   @id @default(uuid()) @db.Uuid
+  experimentId  String   @map("experiment_id") @db.Uuid
+  promptVersion String   @map("prompt_version") @db.Char(1) // 'A' | 'B'
+  input         String
+  output        String
+  // Money is DECIMAL, never float: 0.1 + 0.2 !== 0.3 in floating point.
+  costUsd       Decimal? @map("cost_usd") @db.Decimal(10, 6)
+  latencyMs     Int?     @map("latency_ms")
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  experiment Experiment @relation(fields: [experimentId], references: [id], onDelete: Cascade)
+
+  @@index([experimentId])
+  @@map("experiment_results")
+}

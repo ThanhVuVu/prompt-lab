@@ -31,6 +31,17 @@ export interface Prompt {
   isPublic: boolean;
 }
 
+/** One row of a prompt's history (prompt_versions table). */
+export interface PromptVersion {
+  id: string;
+  promptId: string;
+  version: number;
+  content: string;
+  changedBy: string;
+  changeReason: string | null;
+  createdAt: Date;
+}
+
 /** What a client may send to create a prompt (after validation + defaults). */
 export interface CreatePromptDTO {
   title: string;

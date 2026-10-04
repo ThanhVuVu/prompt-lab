@@ -25,7 +25,11 @@ const envSchema = z.object({
   // is truthy! z.stringbool() maps "true"/"1"/"yes" → true, "false"/"0"/"no" → false.
   LOG_REQUESTS: z.stringbool().default(true),
 
-  // Stage 4+: add DATABASE_URL, JWT_SECRET, ANTHROPIC_API_KEY here as you need them.
+  // Required, no default: better to crash at startup than to silently connect
+  // to the wrong database.
+  DATABASE_URL: z.url({ protocol: /^postgres(ql)?$/ }),
+
+  // Stage 5+: add JWT_SECRET, ANTHROPIC_API_KEY here as you need them.
 });
 
 export type Env = z.infer<typeof envSchema>;
