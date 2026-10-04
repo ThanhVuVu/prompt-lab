@@ -1,28 +1,47 @@
 import { NextFunction, Request, Response } from 'express';
 import { env } from '../config/env';
+import { logger } from '../config/logger';
+import { httpRequestDuration } from '../config/metrics';
 
 /**
- * Logs one line per request, AFTER the response has been sent, e.g.
+ * One structured log line + one metric observation per request, written when
+ * the response has finished (only then are status and duration known).
  *
- *   GET /api/prompts 200 3ms
- *   POST /api/prompts 400 1ms
- *
- * Stage 7 replaces console.log with a structured JSON logger and request IDs.
+ * Deliberately NOT logged: request bodies and the Authorization header. They
+ * contain passwords and tokens, and logs are read by many people and kept for a long time.
  */
 export function requestLogger(req: Request, res: Response, next: NextFunction): void {
-  if (!env.LOG_REQUESTS) {
-    next();
-    return;
-  }
+  const start = process.hrtime.bigint();
 
-  const start = Date.now();
-
-  // Right now the route hasn't run yet, so the status code is unknown.
-  // 'finish' fires once the response has been fully handed to the network.
   res.on('finish', () => {
-    const durationMs = Date.now() - start;
-    console.log(`${req.method} ${req.originalUrl} ${res.statusCode} ${durationMs}ms`);
+    const durationMs = Number(process.hrtime.bigint() - start) / 1e6;
+    const route = routeLabel(req);
+
+    httpRequestDuration.observe({ method: req.method, route, status: String(res.statusCode) }, durationMs / 1000);
+
+    if (!env.LOG_REQUESTS) return;
+    const level = res.statusCode >= 500 ? 'error' : res.statusCode >= 400 ? 'warn' : 'info';
+    logger.log(level, 'request completed', {
+      method: req.method,
+      path: req.originalUrl,
+      route,
+      status: res.statusCode,
+      durationMs: Math.round(durationMs * 10) / 10,
+      userId: req.user?.id,
+      userAgent: req.header('user-agent'),
+    });
   });
 
   next();
+}
+
+/**
+ * The route PATTERN for metrics/logs, e.g. "/api/prompts/:id".
+ * req.route is only set once a route handler matched; requests rejected
+ * earlier (401 from router-level auth, 404s) get a fixed label instead.
+ */
+function routeLabel(req: Request): string {
+  if (!req.route) return '(no route)';
+  const pattern = `${req.baseUrl}${req.route.path}`;
+  return pattern.length > 1 ? pattern.replace(/\/$/, '') : pattern;
 }

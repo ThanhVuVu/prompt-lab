@@ -21,6 +21,14 @@ const envSchema = z.object({
   // process.env values are ALWAYS strings. z.coerce.number() turns "3000" into 3000.
   PORT: z.coerce.number().int().min(1).max(65535).default(3000),
 
+  // Stage 7: observability
+  LOG_LEVEL: z.enum(['error', 'warn', 'info', 'http', 'debug']).default('info'),
+  // json = one machine-readable object per line (production, log aggregators);
+  // pretty = human-readable (local development). Default depends on NODE_ENV.
+  LOG_FORMAT: z.enum(['json', 'pretty']).optional(),
+  // If set, GET /metrics requires `Authorization: Bearer <METRICS_TOKEN>`.
+  METRICS_TOKEN: z.string().min(16).optional(),
+
   // Env vars are strings: LOG_REQUESTS=false arrives as "false", and `if ("false")`
   // is truthy! z.stringbool() maps "true"/"1"/"yes" → true, "false"/"0"/"no" → false.
   LOG_REQUESTS: z.stringbool().default(true),
@@ -46,6 +54,8 @@ const envSchema = z.object({
   CLAUDE_MODEL: z.string().default('claude-opus-5-5'),
   CLAUDE_EFFORT: z.enum(['low', 'medium', 'high', 'xhigh', 'max']).default('low'),
   WORKER_CONCURRENCY: z.coerce.number().int().min(1).max(50).default(2),
+  // The worker serves its own /metrics (it's a separate process) on this port.
+  WORKER_METRICS_PORT: z.coerce.number().int().min(1).max(65535).default(9100),
 });
 
 export type Env = z.infer<typeof envSchema>;

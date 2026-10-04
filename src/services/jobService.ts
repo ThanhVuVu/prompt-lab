@@ -1,3 +1,4 @@
+import { logger } from '../config/logger';
 import { PrismaClient } from '../generated/prisma/client';
 import { JobQueue } from '../queues/analysisQueue';
 import { AuthUser } from '../types';
@@ -42,7 +43,7 @@ export class JobService {
         where: { id: job.id },
         data: { status: 'failed', error: 'Could not enqueue job: queue unavailable' },
       });
-      console.error('Enqueue failed:', err);
+      logger.error('enqueue failed', { jobId: job.id, error: err instanceof Error ? err.message : String(err) });
       throw new ServiceUnavailableError('The job queue is unavailable, please retry later');
     }
     return job;

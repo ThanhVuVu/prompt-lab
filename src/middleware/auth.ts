@@ -2,6 +2,7 @@ import { NextFunction, Request, RequestHandler, Response } from 'express';
 import { AuthService } from '../services/authService';
 import { Role } from '../types';
 import { ForbiddenError, UnauthorizedError } from '../utils/errors';
+import { currentContext } from '../utils/requestContext';
 
 /**
  * AUTHENTICATION: who are you?
@@ -17,6 +18,9 @@ export function requireAuth(authService: AuthService): RequestHandler {
     }
 
     req.user = await authService.verifyToken(token);
+    // From now on every log line for this request carries the user id.
+    const ctx = currentContext();
+    if (ctx) ctx.userId = req.user.id;
     next();
   };
 }

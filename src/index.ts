@@ -7,12 +7,13 @@
  */
 import { buildServices, createApp } from './app';
 import { env } from './config/env';
+import { logger } from './config/logger';
 
 const services = buildServices();
 const app = createApp(services);
 
 const server = app.listen(env.PORT, () => {
-  console.log(`Prompt Lab API listening on http://localhost:${env.PORT} (${env.NODE_ENV})`);
+  logger.info('API listening', { url: `http://localhost:${env.PORT}`, env: env.NODE_ENV });
 });
 
 // Graceful shutdown: when the platform (Docker, Fly.io) asks us to stop,
@@ -20,7 +21,7 @@ const server = app.listen(env.PORT, () => {
 // queue and database connections.
 for (const signal of ['SIGINT', 'SIGTERM'] as const) {
   process.on(signal, () => {
-    console.log(`${signal} received, shutting down...`);
+    logger.info('shutting down', { signal });
     server.close(async () => {
       await services.jobQueue.close();
       await services.db.$disconnect();

@@ -8,6 +8,8 @@ declare global {
   // eslint-disable-next-line @typescript-eslint/no-namespace
   namespace Express {
     interface Request {
+      /** Set by middleware/requestId.ts: unique per request, returned as X-Request-Id */
+      id?: string;
       /** Set by middleware/auth.ts → requireAuth, after verifying the JWT */
       user?: AuthUser;
     }

@@ -4,6 +4,7 @@ import { authRoutes } from './auth';
 import { echoRoutes } from './echo';
 import { healthRoutes } from './health';
 import { jobRoutes } from './jobs';
+import { metricsRoutes } from './metrics';
 import { promptRoutes } from './prompts';
 import { auditRoutes, userRoutes } from './users';
 import { versionRoutes } from './version';
@@ -12,7 +13,8 @@ import { versionRoutes } from './version';
 export function apiRoutes(services: AppServices): Router {
   const router = Router();
 
-  router.use('/health', healthRoutes());
+  router.use('/health', healthRoutes(services.db, services.jobQueue));
+  router.use('/metrics', metricsRoutes());
   router.use('/version', versionRoutes());
   router.use('/echo', echoRoutes(services.echoService));
   router.use('/api/auth', authRoutes(services.authService));

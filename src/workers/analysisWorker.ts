@@ -7,6 +7,8 @@
  */
 import Anthropic from '@anthropic-ai/sdk';
 import { UnrecoverableError } from 'bullmq';
+import { logger } from '../config/logger';
+import { claudeCostUsd, jobsProcessed } from '../config/metrics';
 import { PrismaClient } from '../generated/prisma/client';
 import { ClaudeRefusalError, PromptAnalyzer } from '../services/claudeService';
 
@@ -41,7 +43,17 @@ export async function processAnalysisJob(
     if (!prompt) throw new UnrecoverableError('The prompt was deleted before it could be analysed');
 
     // The slow part: seconds to tens of seconds. This is why it isn't done in the request.
+    logger.info('analysing prompt', { jobId, promptId: prompt.id, attempt });
     const result = await analyzer.analyze(prompt.content);
+    logger.info('analysis received', {
+      jobId,
+      model: result.model,
+      inputTokens: result.inputTokens,
+      outputTokens: result.outputTokens,
+      costUsd: result.costUsd,
+      latencyMs: result.latencyMs,
+    });
+    claudeCostUsd.inc({ model: result.model }, result.costUsd);
 
     // Save the analysis and complete the job atomically.
     await db.$transaction([
@@ -71,10 +83,14 @@ export async function processAnalysisJob(
         },
       }),
     ]);
+    jobsProcessed.inc({ type: job.type, outcome: 'completed' });
   } catch (err) {
     const unrecoverable = !isRetryable(err);
     const isLastAttempt = unrecoverable || attempt >= maxAttempts;
     const message = err instanceof Error ? err.message : String(err);
+
+    jobsProcessed.inc({ type: job.type, outcome: isLastAttempt ? 'failed' : 'retrying' });
+    logger.log(isLastAttempt ? 'error' : 'warn', 'analysis attempt failed', { jobId, attempt, maxAttempts, error: message, willRetry: !isLastAttempt });
 
     await db.job.update({
       where: { id: jobId },

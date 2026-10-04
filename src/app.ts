@@ -10,6 +10,7 @@ import { prisma } from './config/database';
 import { PrismaClient } from './generated/prisma/client';
 import { errorHandler, notFoundHandler } from './middleware/errorHandler';
 import { requestLogger } from './middleware/logging';
+import { requestId } from './middleware/requestId';
 import { apiRoutes } from './routes';
 import { BullJobQueue, JobQueue } from './queues/analysisQueue';
 import { AuthService } from './services/authService';
@@ -45,11 +46,12 @@ export function createApp(overrides: Partial<AppServices> = {}): Express {
   const app = express();
 
   // ORDER MATTERS: middleware runs top to bottom for every request.
-  app.use(express.json({ limit: '100kb' })); // 1. parse JSON bodies (and cap their size)
-  app.use(requestLogger); //                     2. log every request
-  app.use(apiRoutes(services)); //               3. the actual endpoints (each route authenticates itself)
-  app.use(notFoundHandler); //                   4. nothing matched → 404
-  app.use(errorHandler); //                      5. something threw → error response
+  app.use(requestId); //                         1. tag the request (first, so everything can log it)
+  app.use(requestLogger); //                     2. log + time every request
+  app.use(express.json({ limit: '100kb' })); // 3. parse JSON bodies (and cap their size)
+  app.use(apiRoutes(services)); //               4. the actual endpoints (each route authenticates itself)
+  app.use(notFoundHandler); //                   5. nothing matched → 404
+  app.use(errorHandler); //                      6. something threw → error response
 
   return app;
 }

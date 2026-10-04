@@ -19,6 +19,8 @@ export interface AnalysisJobData {
 /** What the API needs from a queue. Tests swap in an in-memory fake. */
 export interface JobQueue {
   enqueue(jobId: string): Promise<void>;
+  /** Throws if the queue's backing store (Redis) is unreachable. */
+  ping(): Promise<void>;
   close(): Promise<void>;
 }
 
@@ -54,6 +56,11 @@ export class BullJobQueue implements JobQueue {
         removeOnFail: 5000,
       },
     );
+  }
+
+  async ping(): Promise<void> {
+    void this.bull; // make sure the connection exists
+    await this.connection!.ping();
   }
 
   async close(): Promise<void> {

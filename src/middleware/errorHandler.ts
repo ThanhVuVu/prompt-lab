@@ -1,5 +1,5 @@
 import { NextFunction, Request, Response } from 'express';
-import { env } from '../config/env';
+import { logger } from '../config/logger';
 import { ApiErrorBody } from '../types';
 import { AppError } from '../utils/errors';
 
@@ -20,7 +20,7 @@ export function notFoundHandler(req: Request, res: Response<ApiErrorBody>): void
  * Express 5 also forwards errors from async handlers automatically
  * (in Express 4 you had to try/catch every async route yourself).
  */
-export function errorHandler(err: unknown, _req: Request, res: Response<ApiErrorBody>, _next: NextFunction): void {
+export function errorHandler(err: unknown, req: Request, res: Response<ApiErrorBody>, _next: NextFunction): void {
   // Our own typed errors: we know exactly what status and message to send.
   if (err instanceof AppError) {
     res.status(err.statusCode).json({
@@ -35,12 +35,22 @@ export function errorHandler(err: unknown, _req: Request, res: Response<ApiError
     return;
   }
 
-  // Anything else is a bug on OUR side → 500. Log the details for us, but never
-  // leak stack traces to clients (they can reveal file paths, library versions…).
-  if (env.NODE_ENV !== 'test') {
-    console.error('Unhandled error:', err);
-  }
-  res.status(500).json({ error: { code: 'INTERNAL_ERROR', message: 'Internal server error' } });
+  // Anything else is a bug on OUR side → 500. Log the full details (stack
+  // included) for us, but never leak them to clients: stack traces reveal file
+  // paths and library versions. The client gets the requestId instead, which
+  // finds this exact log line.
+  logger.error('unhandled error', {
+    error: err instanceof Error ? { name: err.name, message: err.message, stack: err.stack } : String(err),
+    method: req.method,
+    path: req.originalUrl,
+  });
+  res.status(500).json({
+    error: {
+      code: 'INTERNAL_ERROR',
+      message: 'Internal server error',
+      ...(req.id && { requestId: req.id }),
+    },
+  });
 }
 
 function isBodyParseError(err: unknown): boolean {

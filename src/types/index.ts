@@ -96,5 +96,7 @@ export interface ApiErrorBody {
     code: string;
     message: string;
     details?: { path: string; message: string }[];
+    /** Only on 500s: quote it when reporting the problem */
+    requestId?: string;
   };
 }

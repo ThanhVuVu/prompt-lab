@@ -11,6 +11,11 @@ export class InMemoryJobQueue implements JobQueue {
     this.enqueued.push(jobId);
   }
 
+  healthy = true;
+  async ping(): Promise<void> {
+    if (!this.healthy) throw new Error('Redis is down');
+  }
+
   async close(): Promise<void> {}
 }
 
