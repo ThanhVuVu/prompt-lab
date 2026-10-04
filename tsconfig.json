@@ -1,0 +1,24 @@
+{
+  // Used by your editor, `npm run typecheck`, and ts-jest.
+  // Covers src/, stage1/ and tests/ so everything is type-checked.
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "commonjs",
+    "moduleResolution": "node",
+    "lib": ["ES2022"],
+    "types": ["node", "jest"],
+
+    "strict": true,
+    "noImplicitReturns": true,
+    "noFallthroughCasesInSwitch": true,
+
+    "esModuleInterop": true,
+    "forceConsistentCasingInFileNames": true,
+    "skipLibCheck": true,
+    "resolveJsonModule": true,
+
+    "outDir": "dist",
+    "sourceMap": true
+  },
+  "include": ["src", "stage1", "tests"]
+}

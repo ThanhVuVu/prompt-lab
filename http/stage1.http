@@ -1,0 +1,30 @@
+# Requests for the Stage 1 server (npm run stage1).
+# VS Code: install the "REST Client" extension, then click "Send Request" above each block.
+# Each request is separated by ###
+
+@base = http://localhost:3000
+
+### Health check
+GET {{base}}/health
+
+### Echo — valid
+POST {{base}}/echo
+Content-Type: application/json
+
+{ "message": "hello" }
+
+### Echo — missing message (expect 400)
+POST {{base}}/echo
+Content-Type: application/json
+
+{}
+
+### Echo — no Content-Type header. What does req.body look like now?
+POST {{base}}/echo
+
+{ "message": "hello" }
+
+### Unknown route (expect 404)
+GET {{base}}/nope
+
+### TODO(stage1): add your GET /time requests here

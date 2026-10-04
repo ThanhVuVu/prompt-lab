@@ -1,0 +1,39 @@
+{
+  "name": "prompt-lab",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Prompt Laboratory — version, test, and optimize Claude prompts. A backend learning project.",
+  "main": "dist/index.js",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "stage1": "tsx watch stage1/hello-server.ts",
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc -p tsconfig.build.json",
+    "start": "node dist/index.js",
+    "typecheck": "tsc --noEmit",
+    "test": "jest",
+    "test:watch": "jest --watch",
+    "test:stage1": "jest tests/stage1",
+    "test:stage2": "jest tests/stage2",
+    "test:stage3": "jest tests/stage3"
+  },
+  "license": "MIT",
+  "dependencies": {
+    "dotenv": "^17.4.2",
+    "express": "^5.2.1",
+    "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.6",
+    "@types/jest": "^30.0.0",
+    "@types/node": "^22.20.5",
+    "@types/supertest": "^7.2.1",
+    "jest": "^30.5.2",
+    "supertest": "^7.3.1",
+    "ts-jest": "^29.4.14",
+    "tsx": "^4.23.15",
+    "typescript": "~5.9.3"
+  }
+}

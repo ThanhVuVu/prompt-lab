@@ -1,0 +1,59 @@
+# Requests for the main app (npm run dev). VS Code "REST Client" extension.
+# After creating a prompt, copy its id into @id below.
+
+@base = http://localhost:3000
+@id = paste-an-id-here
+
+### Create as alice (expect 201)
+POST {{base}}/api/prompts
+Content-Type: application/json
+x-user-id: alice
+
+{
+  "title": "Summarise a paper",
+  "content": "Summarise the following paper in 5 bullet points: <paper>",
+  "tags": ["summarisation", "research"]
+}
+
+### Create — invalid (expect 400 with details for title and content)
+POST {{base}}/api/prompts
+Content-Type: application/json
+
+{ "title": "ab", "content": "short" }
+
+### Create — try to set server-owned fields (they must be ignored)
+POST {{base}}/api/prompts
+Content-Type: application/json
+x-user-id: alice
+
+{ "title": "Sneaky", "content": "Trying to set my own id and version", "id": "hacked", "version": 99, "createdBy": "admin" }
+
+### List (page 1, 5 per page)
+GET {{base}}/api/prompts?page=1&limit=5
+
+### List — invalid page (expect 400)
+GET {{base}}/api/prompts?page=0
+
+### Get one
+GET {{base}}/api/prompts/{{id}}
+
+### Get one — not found (expect 404)
+GET {{base}}/api/prompts/does-not-exist
+
+### Update as owner — content change bumps version
+PATCH {{base}}/api/prompts/{{id}}
+Content-Type: application/json
+x-user-id: alice
+
+{ "content": "Summarise the following paper in 3 bullet points: <paper>" }
+
+### Update as someone else (expect 403)
+PATCH {{base}}/api/prompts/{{id}}
+Content-Type: application/json
+x-user-id: bob
+
+{ "title": "Hacked by bob" }
+
+### Delete as owner (expect 204), run it twice: what does the second call return?
+DELETE {{base}}/api/prompts/{{id}}
+x-user-id: alice
